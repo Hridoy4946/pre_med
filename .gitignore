@@ -1,0 +1,26 @@
+# Environments & IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Operating System
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Scratch, Debug, Temporary & Planning files
+scratch/
+scratch*
+debug*
+planning/
+*.tmp
+*.bak
+*.log
+*.sqlite
+error_log
+
+# Uploads directory (keep .htaccess and directory, ignore dynamic uploads)
+# uploads/*
+# !uploads/.htaccess
