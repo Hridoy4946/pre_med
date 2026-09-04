@@ -1,5 +1,5 @@
-<?php
-require 'db.php';
+﻿<?php
+require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Doctor') {
     header('Location: login.php');
@@ -64,10 +64,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Transfer Patients — PreMed</title>
     <meta name="description" content="Safely transfer all active patients to another doctor in the same department using a SQL transaction.">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../resources/css/style.css?v=<?= filemtime(dirname(__DIR__) . '/resources/css/style.css') ?>">
 </head>
 <body>
-<?php include 'nav.php'; ?>
+<?php include __DIR__ . '/includes/nav.php'; ?>
 <div class="card" style="max-width:540px;margin:clamp(10px,5vw,42px) auto;">
     <div class="page-header">
         <div class="page-header-left">
@@ -105,6 +105,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </form>
     <div style="margin-top:16px;"><a class="text-link" href="dashboard.php">← Back to Dashboard</a></div>
 </div>
-<?php include 'footer_nav.php'; ?>
+<?php include __DIR__ . '/includes/footer_nav.php'; ?>
 </body>
 </html>

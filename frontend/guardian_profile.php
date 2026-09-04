@@ -1,5 +1,5 @@
-<?php
-require 'db.php';
+﻿<?php
+require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Guardian') {
     header('Location: login.php');
@@ -32,9 +32,9 @@ if ($profile) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Guardian Profile View — PreMed</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../resources/css/style.css?v=<?= filemtime(dirname(__DIR__) . '/resources/css/style.css') ?>">
 </head><body>
-<?php include 'nav.php'; ?>
+<?php include __DIR__ . '/includes/nav.php'; ?>
 <div class="container" style="max-width:960px;margin:clamp(10px,4vw,36px) auto;">
     <div class="page-header">
         <div class="page-header-left">
@@ -132,6 +132,6 @@ if ($profile) {
 
     <div style="margin-top:24px;"><a class="text-link" href="dashboard.php">← Back to dashboard</a></div>
 </div>
-<?php include 'footer_nav.php'; ?>
+<?php include __DIR__ . '/includes/footer_nav.php'; ?>
 </body>
 </html>

@@ -1,5 +1,5 @@
-<?php
-require 'db.php';
+﻿<?php
+require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit(); }
 
@@ -202,7 +202,7 @@ $jsPoints = json_encode(array_map(fn($p) => [
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Dashboard — PreMed</title>
     <meta name="description" content="Your PreMed care dashboard. Track symptoms, appointments, and health status.">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../resources/css/style.css?v=<?= filemtime(dirname(__DIR__) . '/resources/css/style.css') ?>">
     <style>
         /* ── Unique chart styles ─────────────────────────────────────── */
         .chart-outer {
@@ -341,7 +341,7 @@ $jsPoints = json_encode(array_map(fn($p) => [
         .tt-arrow polygon { fill: rgba(8,20,36,.97); filter: drop-shadow(0 2px 4px rgba(0,0,0,.3)); }
     </style>
 </head>
-<?php include 'nav.php'; ?>
+<?php include __DIR__ . '/includes/nav.php'; ?>
 
 <?php if ($isStaff): ?>
 <div class="staff-dashboard-grid" style="max-width:min(96%, 1380px);margin:clamp(10px,3.5vw,36px) auto;display:grid;grid-template-columns:1fr 1.15fr;gap:24px;align-items:stretch;">
@@ -371,7 +371,7 @@ $jsPoints = json_encode(array_map(fn($p) => [
         </div>
 
         <div style="margin-top:24px;padding-top:14px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;">
-            <a class="logout-link" href="logout.php" style="margin:0;">Sign out securely</a>
+            <a class="logout-link" href="../backend/logout.php" style="margin:0;">Sign out securely</a>
             <span style="font-size:11px;color:var(--muted);">PreMed Operations Portal</span>
         </div>
     </main>
@@ -639,7 +639,7 @@ $jsPoints = json_encode(array_map(fn($p) => [
         <p>Your account is active, but no dashboard widgets are configured for this role.</p>
     <?php endif; ?>
 
-    <a class="logout-link" href="logout.php">Sign out securely</a>
+    <a class="logout-link" href="../backend/logout.php">Sign out securely</a>
 </main>
 <?php endif; ?>
 
@@ -772,6 +772,6 @@ function copyCode() {
 </script>
 <?php endif; ?>
 
-<?php include 'footer_nav.php'; ?>
+<?php include __DIR__ . '/includes/footer_nav.php'; ?>
 </body>
 </html>

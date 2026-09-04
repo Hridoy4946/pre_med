@@ -1,5 +1,5 @@
 <?php
-require 'db.php';
+require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Patient') {
     header('Location: login.php');
@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_doc_id'])) {
         $dStmt->execute([$delId, $userId ?? 0]);
         $dDoc = $dStmt->fetch();
         if ($dDoc) {
-            $fp = __DIR__ . '/uploads/' . basename($dDoc['StoredName']);
+            $fp = dirname(__DIR__) . '/resources/uploads/' . basename($dDoc['StoredName']);
             if (file_exists($fp) && is_file($fp)) @unlink($fp);
             $pdo->prepare("DELETE FROM PATIENT_DOCUMENT WHERE DocumentID = ? AND PatientID = ?")->execute([$delId, $userId ?? 0]);
             $deleteMsg = 'Document deleted successfully.';
@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['medical_doc'])) {
             $origName   = basename($file['name']);
             $ext        = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
             $storedName = bin2hex(random_bytes(16)) . '.' . $ext;
-            $destPath   = __DIR__ . '/uploads/' . $storedName;
+            $destPath   = dirname(__DIR__) . '/resources/uploads/' . $storedName;
             if (move_uploaded_file($file['tmp_name'], $destPath)) {
                 $ins = $pdo->prepare("INSERT INTO PATIENT_DOCUMENT (PatientID, FileName, StoredName, MimeType) VALUES (?, ?, ?, ?)");
                 $ins->execute([$userId, $origName, $storedName, $mimeType]);
@@ -141,48 +141,203 @@ $prescriptions = $prescriptionsStmt->fetchAll();
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>My Health Records — PreMed</title>
     <meta name="description" content="View your appointments, symptom history, visit records, and prescriptions.">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../resources/css/style.css?v=<?= filemtime(dirname(__DIR__) . '/resources/css/style.css') ?>">
 <style>
 /* ── Scrollable record table boxes ─────────────────────────── */
 .record-box {
     border: 1px solid var(--line);
     border-radius: 10px;
     margin: 12px 0 24px;
-    overflow: hidden;
-    background: var(--surface);
-}
-.record-box-inner {
-    max-height: 265px;   /* ~5 rows × 53px */
-    overflow-y: auto;
     overflow-x: auto;
+}
+.record-box-scroll {
+    max-height: 295px;
+    overflow-y: auto;
     scrollbar-width: thin;
-    scrollbar-color: var(--teal) transparent;
+    scrollbar-color: var(--teal) rgba(255,255,255,.05);
 }
-.record-box-inner::-webkit-scrollbar { width: 6px; height: 6px; }
-.record-box-inner::-webkit-scrollbar-track { background: transparent; }
-.record-box-inner::-webkit-scrollbar-thumb { background: var(--teal); border-radius: 3px; }
-.record-box table { margin: 0; border-radius: 0; border: none; }
-.record-box table thead th {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    background: var(--card);
-    border-bottom: 1px solid var(--line);
-}
-/* Action buttons in documents table */
+.record-box-scroll::-webkit-scrollbar { width: 6px; }
+.record-box-scroll::-webkit-scrollbar-track { background: rgba(255,255,255,.03); }
+.record-box-scroll::-webkit-scrollbar-thumb { background: var(--teal); border-radius: 3px; }
+.record-box table { margin: 0; width: 100%; border-collapse: collapse; }
+.record-box th { position: sticky; top: 0; background: #0b1f32; z-index: 2; }
 .btn-delete-doc {
-    /* now uses global .btn-delete class — kept for form button reset */
-    background: linear-gradient(135deg, rgba(255,95,91,.18), rgba(255,95,91,.08));
-    color: var(--coral);
+    background: linear-gradient(135deg, rgba(255,95,91,.15), rgba(255,95,91,.08));
     border: 1px solid rgba(255,95,91,.35);
+    color: #ff7e79;
+    transition: all .18s ease;
     cursor: pointer;
-    white-space: nowrap;
 }
 .btn-delete-doc:hover { background: linear-gradient(135deg, rgba(255,95,91,.30), rgba(255,95,91,.16)); box-shadow: 0 6px 18px rgba(255,95,91,.22); filter: brightness(1); transform: translateY(-1px); }
+
+/* ── Document Preview Pop-up Window ───────────────────────── */
+.doc-preview-modal-overlay {
+    display: none !important;
+    position: fixed !important;
+    inset: 0 !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 999999 !important;
+    background: rgba(3, 10, 22, 0.88) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: clamp(10px, 2.5vw, 24px) !important;
+    box-sizing: border-box !important;
+}
+.doc-preview-modal-overlay.active {
+    display: flex !important;
+}
+.doc-preview-modal-dialog {
+    position: relative !important;
+    width: min(96vw, 1000px) !important;
+    height: min(90vh, 850px) !important;
+    max-height: 90vh !important;
+    background: #091a2c !important;
+    border: 1px solid rgba(15, 200, 228, 0.3) !important;
+    border-radius: 16px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    box-shadow: 0 28px 70px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    margin: auto !important;
+    animation: premedModalIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes premedModalIn {
+    from { transform: scale(0.93) translateY(10px); opacity: 0; }
+    to   { transform: scale(1) translateY(0); opacity: 1; }
+}
+.doc-preview-modal-header {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 14px 20px !important;
+    background: #0d2238 !important;
+    border-bottom: 1px solid var(--line) !important;
+    flex-shrink: 0 !important;
+    gap: 12px !important;
+    box-sizing: border-box !important;
+}
+.doc-preview-header-info {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    min-width: 0 !important;
+}
+.doc-preview-header-icon {
+    font-size: 26px !important;
+    line-height: 1 !important;
+    flex-shrink: 0 !important;
+}
+.doc-preview-header-text {
+    min-width: 0 !important;
+}
+.doc-preview-title {
+    margin: 0 !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    color: #f0f7ff !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: clamp(180px, 45vw, 600px) !important;
+}
+.doc-preview-meta {
+    font-size: 11px !important;
+    color: var(--teal) !important;
+    display: block !important;
+    margin-top: 2px !important;
+    font-weight: 600 !important;
+}
+.doc-preview-header-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    flex-shrink: 0 !important;
+}
+.doc-preview-modal-header .btn-download {
+    width: auto !important;
+    margin: 0 !important;
+    padding: 8px 14px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    border-radius: 8px !important;
+    white-space: nowrap !important;
+}
+button.doc-preview-close-btn,
+.doc-preview-modal-dialog .doc-preview-close-btn {
+    width: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+    height: 34px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 8px !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid var(--line) !important;
+    color: var(--muted) !important;
+    font-size: 22px !important;
+    line-height: 1 !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-shadow: none !important;
+    transform: none !important;
+    transition: all 0.18s ease !important;
+}
+button.doc-preview-close-btn:hover {
+    background: rgba(255, 95, 91, 0.25) !important;
+    border-color: rgba(255, 95, 91, 0.5) !important;
+    color: #ff7e79 !important;
+    filter: brightness(1.2) !important;
+}
+.doc-preview-modal-body {
+    flex: 1 !important;
+    position: relative !important;
+    background: #040c16 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
+    height: 100% !important;
+    min-height: 300px !important;
+}
+.doc-preview-iframe {
+    width: 100% !important;
+    height: 100% !important;
+    border: none !important;
+    background: #ffffff !important;
+    box-sizing: border-box !important;
+}
+.doc-preview-image {
+    max-width: 100% !important;
+    max-height: 100% !important;
+    object-fit: contain !important;
+    padding: 16px !important;
+    box-sizing: border-box !important;
+}
+.doc-preview-fallback {
+    text-align: center !important;
+    padding: 36px 20px !important;
+    color: var(--muted) !important;
+}
+.doc-preview-fallback-icon {
+    font-size: 44px !important;
+    margin-bottom: 12px !important;
+    display: block !important;
+}
 </style>
 </head>
 <body>
-<?php include 'nav.php'; ?>
+<?php include __DIR__ . '/includes/nav.php'; ?>
 <div class="container" style="max-width:1000px;margin:clamp(10px,4vw,36px) auto;">
 
     <div class="page-header">
@@ -406,18 +561,22 @@ $prescriptions = $prescriptionsStmt->fetchAll();
             <td>
                 <div class="btn-group">
                     <a class="btn btn-sm btn-auto btn-download"
-                       href="download_document.php?id=<?= (int)$doc['DocumentID'] ?>">
+                       href="../backend/download_document.php?id=<?= (int)$doc['DocumentID'] ?>">
                        &#x2193; Download
                     </a>
                     <?php
                     $viewable = in_array($doc['MimeType'], ['application/pdf','image/jpeg','image/png']);
                     if ($viewable):
                     ?>
-                    <a class="btn btn-sm btn-auto btn-view"
-                       href="download_document.php?id=<?= (int)$doc['DocumentID'] ?>"
-                       target="_blank" rel="noopener">
+                    <button type="button"
+                       class="btn btn-sm btn-auto btn-view js-preview-doc"
+                       data-doc-id="<?= (int)$doc['DocumentID'] ?>"
+                       data-file-name="<?= htmlspecialchars($doc['FileName']) ?>"
+                       data-mime-type="<?= htmlspecialchars($doc['MimeType']) ?>"
+                       data-preview-url="../backend/download_document.php?id=<?= (int)$doc['DocumentID'] ?>&view=1"
+                       data-download-url="../backend/download_document.php?id=<?= (int)$doc['DocumentID'] ?>">
                        &#x1F441; View
-                    </a>
+                    </button>
                     <?php else: ?>
                     <span class="btn btn-sm btn-auto" style="background:rgba(255,255,255,.04);color:var(--muted2);border:1px solid var(--line);cursor:default;opacity:.5;" title="Preview not available for this file type">
                        &#x1F441; View
@@ -449,6 +608,110 @@ $prescriptions = $prescriptionsStmt->fetchAll();
 
     <div style="margin-top:24px;"><a class="text-link" href="dashboard.php">← Back to dashboard</a></div>
 </div>
-<?php include 'footer_nav.php'; ?>
+
+<!-- Document Preview Modal Dialog -->
+<div id="doc_preview_modal" class="doc-preview-modal-overlay" aria-hidden="true">
+    <div class="doc-preview-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="doc_preview_title">
+        <div class="doc-preview-modal-header">
+            <div class="doc-preview-header-info">
+                <span id="doc_preview_icon" class="doc-preview-header-icon">📄</span>
+                <div class="doc-preview-header-text">
+                    <h4 id="doc_preview_title" class="doc-preview-title">Document Preview</h4>
+                    <span id="doc_preview_meta" class="doc-preview-meta">PDF Document</span>
+                </div>
+            </div>
+            <div class="doc-preview-header-actions">
+                <a id="doc_preview_download_btn" href="#" class="btn btn-sm btn-auto btn-download" download>
+                    ↓ Download
+                </a>
+                <button type="button" class="doc-preview-close-btn" id="doc_preview_close_btn" aria-label="Close Preview">&times;</button>
+            </div>
+        </div>
+        <div class="doc-preview-modal-body" id="doc_preview_body">
+            <!-- Content dynamically injected: iframe, img, or fallback -->
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    const previewModal = document.getElementById('doc_preview_modal');
+    const previewTitle = document.getElementById('doc_preview_title');
+    const previewMeta  = document.getElementById('doc_preview_meta');
+    const previewIcon  = document.getElementById('doc_preview_icon');
+    const previewBody  = document.getElementById('doc_preview_body');
+    const previewDownload = document.getElementById('doc_preview_download_btn');
+    const closeBtn     = document.getElementById('doc_preview_close_btn');
+
+    function closePreview() {
+        if (!previewModal) return;
+        previewModal.classList.remove('active');
+        previewModal.setAttribute('aria-hidden', 'true');
+        if (previewBody) previewBody.innerHTML = '';
+    }
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closePreview);
+    }
+
+    if (previewModal) {
+        previewModal.addEventListener('click', function(e) {
+            if (e.target === previewModal) {
+                closePreview();
+            }
+        });
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && previewModal && previewModal.classList.contains('active')) {
+            closePreview();
+        }
+    });
+
+    document.querySelectorAll('.js-preview-doc').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const fileName    = this.dataset.fileName || 'Medical Document';
+            const mimeType    = this.dataset.mimeType || '';
+            const previewUrl  = this.dataset.previewUrl;
+            const downloadUrl = this.dataset.downloadUrl;
+
+            previewTitle.textContent = fileName;
+            previewDownload.href = downloadUrl;
+            previewDownload.setAttribute('download', fileName);
+
+            let icon = '📄';
+            let typeLabel = 'Medical Record';
+
+            if (mimeType.includes('pdf')) {
+                icon = '📄';
+                typeLabel = 'PDF Document';
+                previewBody.innerHTML = '<iframe class="doc-preview-iframe" src="' + previewUrl + '" title="' + fileName.replace(/"/g, '&quot;') + '"></iframe>';
+            } else if (mimeType.startsWith('image/')) {
+                icon = '🖼';
+                typeLabel = 'Medical Image / Scan';
+                previewBody.innerHTML = '<img class="doc-preview-image" src="' + previewUrl + '" alt="' + fileName.replace(/"/g, '&quot;') + '">';
+            } else {
+                icon = '📝';
+                typeLabel = 'Document File';
+                previewBody.innerHTML = '<div class="doc-preview-fallback">' +
+                    '<span class="doc-preview-fallback-icon">📄</span>' +
+                    '<h4 style="color:#f0f7ff;margin:0 0 8px;">Inline preview unavailable</h4>' +
+                    '<p style="margin:0 0 16px;font-size:13px;color:var(--muted);">This file format cannot be rendered directly in the browser.</p>' +
+                    '<a href="' + downloadUrl + '" class="btn btn-sm btn-auto btn-download" download="' + fileName.replace(/"/g, '&quot;') + '">↓ Download "' + fileName.replace(/"/g, '&quot;') + '" to open</a>' +
+                    '</div>';
+            }
+
+            previewIcon.textContent = icon;
+            previewMeta.textContent = typeLabel;
+
+            previewModal.classList.add('active');
+            previewModal.setAttribute('aria-hidden', 'false');
+        });
+    });
+})();
+</script>
+
+<?php include __DIR__ . '/includes/footer_nav.php'; ?>
 </body>
 </html>

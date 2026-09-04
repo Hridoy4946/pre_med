@@ -1,5 +1,5 @@
-<?php
-require 'db.php';
+﻿<?php
+require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Doctor') {
     header('Location: login.php');
@@ -118,7 +118,7 @@ $minDate = date('Y-m-d\TH:i', strtotime('+30 minutes'));
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>My Appointments — PreMed</title>
     <meta name="description" content="View all your scheduled and past patient appointments.">
-    <link rel="stylesheet" href="style.css?v=<?= filemtime(__DIR__ . '/style.css') ?>">
+    <link rel="stylesheet" href="../resources/css/style.css?v=<?= filemtime(dirname(__DIR__) . '/resources/css/style.css') ?>">
     <style>
         .appt-tabs { display:flex; gap:8px; margin-bottom:20px; }
         .appt-tab {
@@ -273,7 +273,7 @@ $minDate = date('Y-m-d\TH:i', strtotime('+30 minutes'));
     </style>
 </head>
 <body>
-<?php include 'nav.php'; ?>
+<?php include __DIR__ . '/includes/nav.php'; ?>
 <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;padding:clamp(10px,4vw,36px) clamp(10px,3vw,24px);max-width:1400px;margin:0 auto;">
 
 <!-- LEFT: Schedule Form -->
@@ -547,6 +547,6 @@ document.querySelectorAll('form').forEach(f => {
     });
 });
 </script>
-<?php include 'footer_nav.php'; ?>
+<?php include __DIR__ . '/includes/footer_nav.php'; ?>
 </body>
 </html>

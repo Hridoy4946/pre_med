@@ -1,6 +1,6 @@
 <?php
-require_once __DIR__ . '/db.php';
-require_once __DIR__ . '/notifications.php';
+require_once dirname(__DIR__, 2) . '/backend/db.php';
+require_once dirname(__DIR__, 2) . '/backend/notifications.php';
 
 $currentPage = basename($_SERVER['PHP_SELF']);
 $role = $_SESSION['role'] ?? 'Patient';
@@ -13,7 +13,15 @@ $isGuardian = $role === 'Guardian';
 
 $userNotifications = [];
 if ($userId > 0 && isset($pdo)) {
-    $userNotifications = get_user_notifications($pdo, $userId, $role);
+    $rawNotifs = get_user_notifications($pdo, $userId, $role);
+    $cleared = $_SESSION['cleared_notifications'][$userId] ?? [];
+    if (!empty($cleared)) {
+        $userNotifications = array_values(array_filter($rawNotifs, function($n) use ($cleared) {
+            return !in_array($n['id'] ?? '', $cleared, true);
+        }));
+    } else {
+        $userNotifications = $rawNotifs;
+    }
 }
 $unreadCount = count($userNotifications);
 ?>
@@ -84,19 +92,22 @@ $unreadCount = count($userNotifications);
                                 default    => '📅',
                             };
                         ?>
-                            <a href="<?= htmlspecialchars($n['link']) ?>" class="notif-item">
-                                <div class="notif-icon-box notif-icon-<?= htmlspecialchars($n['type']) ?>">
-                                    <?= $iconSymbol ?>
-                                </div>
-                                <div class="notif-content">
-                                    <div class="notif-title-row">
-                                        <span class="notif-title"><?= htmlspecialchars($n['title']) ?></span>
-                                        <span class="notif-tag notif-tag-<?= htmlspecialchars($n['type']) ?>"><?= htmlspecialchars($n['badge']) ?></span>
+                            <div class="notif-item-wrapper" style="position:relative;">
+                                <a href="<?= htmlspecialchars($n['link']) ?>" class="notif-item" data-notif-id="<?= htmlspecialchars($n['id']) ?>">
+                                    <div class="notif-icon-box notif-icon-<?= htmlspecialchars($n['type']) ?>">
+                                        <?= $iconSymbol ?>
                                     </div>
-                                    <p class="notif-desc"><?= htmlspecialchars($n['body']) ?></p>
-                                    <span class="notif-time"><?= htmlspecialchars($n['time']) ?></span>
-                                </div>
-                            </a>
+                                    <div class="notif-content" style="padding-right:18px;">
+                                        <div class="notif-title-row">
+                                            <span class="notif-title"><?= htmlspecialchars($n['title']) ?></span>
+                                            <span class="notif-tag notif-tag-<?= htmlspecialchars($n['type']) ?>"><?= htmlspecialchars($n['badge']) ?></span>
+                                        </div>
+                                        <p class="notif-desc"><?= htmlspecialchars($n['body']) ?></p>
+                                        <span class="notif-time"><?= htmlspecialchars($n['time']) ?></span>
+                                    </div>
+                                </a>
+                                <button type="button" class="notif-item-dismiss" data-notif-id="<?= htmlspecialchars($n['id']) ?>" title="Dismiss notification" aria-label="Dismiss">&times;</button>
+                            </div>
                         <?php endforeach; ?>
                     <?php else: ?>
                         <div class="notif-empty" id="notif_empty">
@@ -112,7 +123,7 @@ $unreadCount = count($userNotifications);
             </div>
         </div>
 
-        <a class="header-logout" href="logout.php"
+        <a class="header-logout" href="../backend/logout.php"
            data-confirm-title="Confirm Sign Out"
            data-confirm-message="Are you sure you want to end your current PreMed session?"
            data-confirm-btn="Sign Out"
@@ -179,6 +190,11 @@ $unreadCount = count($userNotifications);
         if (notifClear) {
             notifClear.addEventListener('click', (e) => {
                 e.stopPropagation();
+
+                // Collect IDs of active notifications
+                const notifItems = notifList ? notifList.querySelectorAll('[data-notif-id]') : [];
+                const ids = Array.from(notifItems).map(item => item.getAttribute('data-notif-id')).filter(Boolean);
+
                 if (notifBadge) notifBadge.remove();
                 if (notifPill) notifPill.remove();
                 notifClear.remove();
@@ -190,6 +206,63 @@ $unreadCount = count($userNotifications);
                             <p style="margin:2px 0 0;font-size:11px;color:var(--muted);">You are up to date on all clinical events.</p>
                         </div>
                     `;
+                }
+
+                // Persist cleared state to backend session so they stay cleared across page navigation
+                fetch('../backend/clear_notifications.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'clear_all', ids: ids, all: true })
+                }).catch(() => {});
+            });
+        }
+
+        // Single item dismiss action
+        if (notifList) {
+            notifList.addEventListener('click', (e) => {
+                const dismissBtn = e.target.closest('.notif-item-dismiss');
+                if (!dismissBtn) return;
+                e.stopPropagation();
+                e.preventDefault();
+
+                const notifId = dismissBtn.getAttribute('data-notif-id');
+                const wrapper = dismissBtn.closest('.notif-item-wrapper');
+                if (wrapper) wrapper.remove();
+
+                // Update counts
+                const remaining = notifList.querySelectorAll('.notif-item-wrapper').length;
+                if (notifBadge) {
+                    if (remaining > 0) {
+                        notifBadge.textContent = remaining;
+                    } else {
+                        notifBadge.remove();
+                    }
+                }
+                if (notifPill) {
+                    if (remaining > 0) {
+                        notifPill.textContent = remaining + ' new';
+                    } else {
+                        notifPill.remove();
+                    }
+                }
+                if (remaining === 0) {
+                    if (notifClear) notifClear.remove();
+                    notifList.innerHTML = `
+                        <div class="notif-empty">
+                            <span style="font-size:24px;display:block;margin-bottom:6px;">✓</span>
+                            <strong style="color:#e8f4fb;">All caught up!</strong>
+                            <p style="margin:2px 0 0;font-size:11px;color:var(--muted);">No unread clinical alerts or appointment updates.</p>
+                        </div>
+                    `;
+                }
+
+                // Persist single dismissal to backend session
+                if (notifId) {
+                    fetch('../backend/clear_notifications.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ids: [notifId] })
+                    }).catch(() => {});
                 }
             });
         }

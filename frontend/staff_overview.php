@@ -1,5 +1,5 @@
-<?php
-require 'db.php';
+﻿<?php
+require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Staff') {
     header('Location: login.php');
@@ -25,10 +25,10 @@ $inventoryRows = $inventoryStmt->fetchAll();
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Staff Operations Overview — PreMed</title>
     <meta name="description" content="Staff operational overview: appointments, room usage, inventory, and billing status.">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../resources/css/style.css?v=<?= filemtime(dirname(__DIR__) . '/resources/css/style.css') ?>">
 </head>
 <body>
-<?php include 'nav.php'; ?>
+<?php include __DIR__ . '/includes/nav.php'; ?>
 <div class="container" style="max-width:1000px;margin:clamp(10px,4vw,36px) auto;">
     <div class="page-header">
         <div class="page-header-left">
@@ -129,6 +129,6 @@ $inventoryRows = $inventoryStmt->fetchAll();
 
     <div style="margin-top:20px;"><a class="text-link" href="dashboard.php">← Back to Dashboard</a></div>
 </div>
-<?php include 'footer_nav.php'; ?>
+<?php include __DIR__ . '/includes/footer_nav.php'; ?>
 </body>
 </html>

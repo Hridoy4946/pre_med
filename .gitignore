@@ -22,5 +22,6 @@ planning/
 error_log
 
 # Uploads directory (keep .htaccess and directory, ignore dynamic uploads)
-# uploads/*
-# !uploads/.htaccess
+# resources/uploads/*
+# !resources/uploads/.htaccess
+

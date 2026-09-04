@@ -1,5 +1,5 @@
 <?php
-require 'db.php';
+require_once __DIR__ . '/db.php';
 session_start();
 
 if (!isset($_SESSION['user_id'])) {
@@ -52,7 +52,7 @@ if (!$allowed) {
 }
 
 // Build safe path
-$uploadDir = __DIR__ . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR;
+$uploadDir = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'resources' . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR;
 $storedName = basename($doc['StoredName']); // strip any directory traversal
 $filePath   = $uploadDir . $storedName;
 
@@ -64,9 +64,11 @@ if (!file_exists($filePath) || !is_file($filePath)) {
 // Stream the file
 $mimeType    = $doc['MimeType'];
 $displayName = $doc['FileName'];
+$isView      = isset($_GET['view']) && $_GET['view'] === '1';
+$disposition = $isView ? 'inline' : 'attachment';
 
 header('Content-Type: ' . $mimeType);
-header('Content-Disposition: attachment; filename="' . addslashes($displayName) . '"');
+header('Content-Disposition: ' . $disposition . '; filename="' . addslashes($displayName) . '"');
 header('Content-Length: ' . filesize($filePath));
 header('Cache-Control: private, no-cache, no-store, must-revalidate');
 header('Pragma: no-cache');

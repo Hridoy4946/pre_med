@@ -34,21 +34,50 @@ A web-based healthcare management platform designed for patient symptom monitori
 
 ```powershell
 # Run from the project directory in PowerShell:
-Get-Content .\schema.sql | & 'C:\xampp\mysql\bin\mysql.exe' -u root
-Get-Content .\demo_data.sql | & 'C:\xampp\mysql\bin\mysql.exe' -u root
+Get-Content .\resources\sql\schema.sql | & 'C:\xampp\mysql\bin\mysql.exe' -u root
+Get-Content .\resources\sql\demo_data.sql | & 'C:\xampp\mysql\bin\mysql.exe' -u root
 ```
-*(Alternatively, import `schema.sql` then `demo_data.sql` via phpMyAdmin).*
+*(Alternatively, import `resources/sql/schema.sql` then `resources/sql/demo_data.sql` via phpMyAdmin).*
 
 ### 2. Access the Application
 - If using Apache in XAMPP (`C:\xampp\htdocs\pre_med`), open:
   ```
   http://localhost/pre_med/
   ```
+  *(Visiting the root URL automatically directs to the frontend portal).*
 - Or run the PHP built-in server:
   ```powershell
   & 'C:\xampp\php\php.exe' -S 127.0.0.1:8080
   ```
   and navigate to `http://127.0.0.1:8080/`.
+
+---
+
+## Directory Structure
+
+```
+pre_med/
+├── backend/                  # Server-side business logic, database, actions & APIs
+│   ├── db.php                # PDO connection, CSRF tokens & security utilities
+│   ├── notifications.php     # Notification query engine
+│   ├── logout.php            # Session teardown handler
+│   ├── download_document.php # Document access control & streamer
+│   ├── delete_document.php   # Document deletion handler
+│   └── populate_system_data.php # Database seeder script
+├── frontend/                 # User-facing pages, views & layouts
+│   ├── includes/             # Shared partials (nav, footer)
+│   ├── index.php             # Frontend gateway router
+│   ├── login.php             # Authentication sign-in
+│   ├── signup.php            # Registration portal
+│   ├── dashboard.php         # Central command center
+│   ├── billing.php           # Invoices & billing
+│   ├── patient_records.php   # Patient health records & uploads
+│   └── ...                   # Doctor & staff clinical modules
+└── resources/                # Static assets, uploads & SQL scripts
+    ├── css/                  # Unified CSS stylesheet
+    ├── uploads/              # Uploaded patient records & .htaccess
+    └── sql/                  # Database DDL schema & DML seed dumps
+```
 
 ---
 

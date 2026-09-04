@@ -1,5 +1,5 @@
 <?php
-require 'db.php';
+require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 
 $departments = $pdo->query('SELECT DeptID, DeptName FROM DEPARTMENT ORDER BY DeptName')->fetchAll();
@@ -118,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Register Account — PreMed</title>
     <meta name="description" content="Create your PreMed account as a Patient, Doctor, Staff, or Guardian.">
-    <link rel="stylesheet" href="style.css?v=<?= filemtime(__DIR__ . '/style.css') ?>">
+    <link rel="stylesheet" href="../resources/css/style.css?v=<?= filemtime(dirname(__DIR__) . '/resources/css/style.css') ?>">
     <style>
         .role-conditional { display: none; }
         .role-conditional.active { display: block; }

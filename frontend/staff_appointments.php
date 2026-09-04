@@ -1,5 +1,5 @@
-<?php
-require 'db.php';
+﻿<?php
+require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Staff') {
     header('Location: login.php');
@@ -72,10 +72,10 @@ $statusStyles = [
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Staff Appointments — PreMed</title>
     <meta name="description" content="Manage patient appointments and booking status.">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../resources/css/style.css?v=<?= filemtime(dirname(__DIR__) . '/resources/css/style.css') ?>">
 </head>
 <body>
-<?php include 'nav.php'; ?>
+<?php include __DIR__ . '/includes/nav.php'; ?>
 <div class="container staff-appt-container" style="width:min(96%, 1520px) !important;max-width:1520px !important;margin:clamp(10px,3.5vw,36px) auto;">
     <div class="page-header">
         <div class="page-header-left">
@@ -199,6 +199,6 @@ document.querySelectorAll('form').forEach(f => {
     });
 });
 </script>
-<?php include 'footer_nav.php'; ?>
+<?php include __DIR__ . '/includes/footer_nav.php'; ?>
 </body>
 </html>

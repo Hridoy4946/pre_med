@@ -1,5 +1,5 @@
-<?php
-require 'db.php';
+﻿<?php
+require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['Staff', 'Doctor'], true)) {
     header('Location: login.php');
@@ -152,7 +152,7 @@ $items = $itemsStmt->fetchAll();
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Pharmacy &amp; Supplies Inventory — PreMed</title>
     <meta name="description" content="Manage clinic medications, pharmaceuticals, stock quantities, and inventory reorders.">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../resources/css/style.css?v=<?= filemtime(dirname(__DIR__) . '/resources/css/style.css') ?>">
     <style>
     .inv-container { max-width: 1240px; margin: clamp(10px, 4vw, 36px) auto; }
     .inv-card {
@@ -218,7 +218,7 @@ $items = $itemsStmt->fetchAll();
     </style>
 </head>
 <body>
-<?php include 'nav.php'; ?>
+<?php include __DIR__ . '/includes/nav.php'; ?>
 
 <div class="inv-container">
     <div class="page-header">
@@ -422,7 +422,7 @@ $items = $itemsStmt->fetchAll();
     </div>
 </div>
 
-<?php include 'footer_nav.php'; ?>
+<?php include __DIR__ . '/includes/footer_nav.php'; ?>
 
 <script>
 function toggleAddForm() {

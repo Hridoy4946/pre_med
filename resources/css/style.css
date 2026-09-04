@@ -238,6 +238,7 @@ textarea:focus-visible { outline: 2px solid rgba(15,200,228,.5); outline-offset:
 .notif-list::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
 
 .notif-item {
+    position: relative;
     display: flex;
     gap: 12px;
     padding: 12px 16px;
@@ -252,6 +253,39 @@ textarea:focus-visible { outline: 2px solid rgba(15,200,228,.5); outline-offset:
 .notif-item:hover {
     background: rgba(255, 255, 255, 0.04);
     text-decoration: none;
+}
+.notif-item-dismiss {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 20px !important;
+    height: 20px !important;
+    min-width: 20px !important;
+    max-width: 20px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    color: var(--muted2) !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 14px !important;
+    line-height: 1 !important;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s, color 0.15s !important;
+    box-shadow: none !important;
+    transform: none !important;
+    z-index: 2;
+}
+.notif-item:hover .notif-item-dismiss {
+    opacity: 1;
+}
+.notif-item-dismiss:hover {
+    background: rgba(255, 95, 91, 0.25) !important;
+    color: #ff7e79 !important;
 }
 
 .notif-icon-box {
@@ -408,6 +442,178 @@ textarea:focus-visible { outline: 2px solid rgba(15,200,228,.5); outline-offset:
     font-weight: 600;
     border-radius: 8px;
     cursor: pointer;
+}
+
+/* ─── Document Preview Modal Dialog ─────────────────────────────────── */
+.doc-preview-modal-overlay {
+    display: none !important;
+    position: fixed !important;
+    inset: 0 !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 999999 !important;
+    background: rgba(3, 10, 22, 0.88) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: clamp(10px, 2.5vw, 24px) !important;
+    box-sizing: border-box !important;
+}
+.doc-preview-modal-overlay.active {
+    display: flex !important;
+}
+
+.doc-preview-modal-dialog {
+    position: relative !important;
+    width: min(96vw, 1000px) !important;
+    height: min(90vh, 850px) !important;
+    max-height: 90vh !important;
+    background: #091a2c !important;
+    border: 1px solid rgba(15, 200, 228, 0.3) !important;
+    border-radius: 16px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    box-shadow: 0 28px 70px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    margin: auto !important;
+    animation: premedModalIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes premedModalIn {
+    from { transform: scale(0.93) translateY(10px); opacity: 0; }
+    to   { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+.doc-preview-modal-header {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 14px 20px !important;
+    background: #0d2238 !important;
+    border-bottom: 1px solid var(--line) !important;
+    flex-shrink: 0 !important;
+    gap: 12px !important;
+    box-sizing: border-box !important;
+}
+.doc-preview-header-info {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    min-width: 0 !important;
+}
+.doc-preview-header-icon {
+    font-size: 26px !important;
+    line-height: 1 !important;
+    flex-shrink: 0 !important;
+}
+.doc-preview-header-text {
+    min-width: 0 !important;
+}
+.doc-preview-title {
+    margin: 0 !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    color: #f0f7ff !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: clamp(180px, 45vw, 600px) !important;
+}
+.doc-preview-meta {
+    font-size: 11px !important;
+    color: var(--teal) !important;
+    display: block !important;
+    margin-top: 2px !important;
+    font-weight: 600 !important;
+}
+.doc-preview-header-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    flex-shrink: 0 !important;
+}
+.doc-preview-modal-header .btn-download {
+    width: auto !important;
+    margin: 0 !important;
+    padding: 8px 14px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    border-radius: 8px !important;
+    white-space: nowrap !important;
+}
+button.doc-preview-close-btn,
+.doc-preview-modal-dialog .doc-preview-close-btn {
+    width: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+    height: 34px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 8px !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid var(--line) !important;
+    color: var(--muted) !important;
+    font-size: 22px !important;
+    line-height: 1 !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-shadow: none !important;
+    transform: none !important;
+    transition: all 0.18s ease !important;
+}
+button.doc-preview-close-btn:hover {
+    background: rgba(255, 95, 91, 0.25) !important;
+    border-color: rgba(255, 95, 91, 0.5) !important;
+    color: #ff7e79 !important;
+    filter: brightness(1.2) !important;
+}
+
+.doc-preview-modal-body {
+    flex: 1 !important;
+    position: relative !important;
+    background: #040c16 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
+    height: 100% !important;
+    min-height: 300px !important;
+}
+
+.doc-preview-iframe {
+    width: 100% !important;
+    height: 100% !important;
+    border: none !important;
+    background: #ffffff !important;
+    box-sizing: border-box !important;
+}
+
+.doc-preview-image {
+    max-width: 100% !important;
+    max-height: 100% !important;
+    object-fit: contain !important;
+    padding: 16px !important;
+    box-sizing: border-box !important;
+}
+
+.doc-preview-fallback {
+    text-align: center !important;
+    padding: 36px 20px !important;
+    color: var(--muted) !important;
+}
+.doc-preview-fallback-icon {
+    font-size: 44px !important;
+    margin-bottom: 12px !important;
+    display: block !important;
 }
 
 /* ─── Auth pages ────────────────────────────────────────────────────── */

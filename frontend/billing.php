@@ -1,5 +1,5 @@
-<?php
-require 'db.php';
+﻿<?php
+require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['Doctor', 'Staff'], true)) {
     header('Location: login.php');
@@ -119,7 +119,7 @@ if ($isStaff) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Visit Billing — PreMed</title>
     <meta name="description" content="Calculate and generate patient invoices with insurance coverage applied.">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../resources/css/style.css?v=<?= filemtime(dirname(__DIR__) . '/resources/css/style.css') ?>">
     <style>
     .inv-box {
         border: 1px solid var(--line); border-radius: 10px;
@@ -183,7 +183,7 @@ if ($isStaff) {
     </style>
 </head>
 <body>
-<?php include 'nav.php'; ?>
+<?php include __DIR__ . '/includes/nav.php'; ?>
 <div class="card" style="max-width:860px;margin:clamp(10px,4vw,36px) auto;">
     <div class="page-header">
         <div class="page-header-left">
@@ -312,7 +312,7 @@ if ($isStaff) {
   </div>
 </div>
 
-<?php include 'footer_nav.php'; ?>
+<?php include __DIR__ . '/includes/footer_nav.php'; ?>
 <script>
 function openPrintSlip(patientName, patientCode, invoiceId, visitId, date, outOfPocket, doctorName) {
     document.getElementById('slipSub').textContent =

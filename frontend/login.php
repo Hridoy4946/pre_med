@@ -1,5 +1,5 @@
 <?php
-require 'db.php';
+require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Login — PreMed</title>
     <meta name="description" content="Sign in to your PreMed care portal as a Patient, Doctor, Staff, or Guardian.">
-    <link rel="stylesheet" href="style.css?v=<?= filemtime(__DIR__ . '/style.css') ?>">
+    <link rel="stylesheet" href="../resources/css/style.css?v=<?= filemtime(dirname(__DIR__) . '/resources/css/style.css') ?>">
     <style>
     .auth-panel form {
         display: flex !important;

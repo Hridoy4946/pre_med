@@ -1,5 +1,5 @@
-<?php
-require_once 'db.php';
+﻿<?php
+require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Doctor') {
     header('Location: login.php');
@@ -105,7 +105,7 @@ function formatAuditPayload(?string $rawJson): string {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Manage Clinical Records &amp; Audit Log — PreMed</title>
     <meta name="description" content="Correct or remove diagnoses and prescriptions. Every change is captured in the audit log.">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../resources/css/style.css?v=<?= filemtime(dirname(__DIR__) . '/resources/css/style.css') ?>">
     <style>
         .audit-data-row {
             display: flex;
@@ -156,7 +156,7 @@ function formatAuditPayload(?string $rawJson): string {
     </style>
 </head>
 <body>
-<?php include 'nav.php'; ?>
+<?php include __DIR__ . '/includes/nav.php'; ?>
 <div class="container" style="max-width:980px;margin:clamp(10px,4vw,36px) auto;">
     <div class="page-header">
         <div class="page-header-left">
@@ -280,6 +280,6 @@ function formatAuditPayload(?string $rawJson): string {
         <a class="text-link" href="dashboard.php">← Back to Dashboard</a>
     </div>
 </div>
-<?php include 'footer_nav.php'; ?>
+<?php include __DIR__ . '/includes/footer_nav.php'; ?>
 </body>
 </html>

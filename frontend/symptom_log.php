@@ -1,5 +1,5 @@
-<?php
-require 'db.php';
+﻿<?php
+require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Patient') {
     header('Location: login.php');
@@ -102,7 +102,7 @@ $loggedToday = (int) $todayStmt->fetchColumn() > 0;
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Symptom Log — PreMed</title>
     <meta name="description" content="Log daily symptoms with severity scores and track your health progression over time.">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../resources/css/style.css?v=<?= filemtime(dirname(__DIR__) . '/resources/css/style.css') ?>">
     <style>
         .symptom-view-wrapper {
             width: min(100%, 1180px);
@@ -346,7 +346,7 @@ $loggedToday = (int) $todayStmt->fetchColumn() > 0;
     </style>
 </head>
 <body>
-<?php include 'nav.php'; ?>
+<?php include __DIR__ . '/includes/nav.php'; ?>
 
 <main class="symptom-view-wrapper">
 

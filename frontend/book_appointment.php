@@ -1,5 +1,5 @@
-<?php
-require 'db.php';
+﻿<?php
+require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Patient') {
     header("Location: login.php");
@@ -92,10 +92,10 @@ $myAppointments = $myApptStmt->fetchAll();
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Book Appointment — PreMed</title>
     <meta name="description" content="Book an appointment with a doctor. Conflict detection prevents double-booking of doctors and rooms.">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="../resources/css/style.css?v=<?= filemtime(dirname(__DIR__) . '/resources/css/style.css') ?>">
 </head>
 <body>
-<?php include 'nav.php'; ?>
+<?php include __DIR__ . '/includes/nav.php'; ?>
 <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;padding:clamp(10px,4vw,36px) clamp(10px,3vw,24px);max-width:1200px;margin:0 auto;">
 
 <!-- LEFT: Booking Form -->
@@ -276,6 +276,6 @@ document.querySelectorAll('.duration-btn').forEach(btn => {
     });
 });
 </script>
-<?php include 'footer_nav.php'; ?>
+<?php include __DIR__ . '/includes/footer_nav.php'; ?>
 </body>
 </html>

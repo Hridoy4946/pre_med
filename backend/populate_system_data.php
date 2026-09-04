@@ -340,9 +340,9 @@ try {
     }
 
     // 9. Populate Uploaded Patient Documents & Real Files
-    echo "9. Generating Real Uploaded Sample Documents in uploads/...\n";
+    echo "9. Generating Real Uploaded Sample Documents in resources/uploads/...\n";
     $pdo->exec("DELETE FROM PATIENT_DOCUMENT");
-    $uploadDir = __DIR__ . '/uploads';
+    $uploadDir = dirname(__DIR__) . '/resources/uploads';
     if (!is_dir($uploadDir)) {
         mkdir($uploadDir, 0777, true);
     }
