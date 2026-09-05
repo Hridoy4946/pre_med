@@ -123,6 +123,53 @@ textarea:focus-visible { outline: 2px solid rgba(15,200,228,.5); outline-offset:
     flex-shrink: 0;
 }
 
+/* ─── Header User Chip ──────────────────────────────────────────────── */
+.header-user-chip {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 10px 4px 5px;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--line);
+    background: rgba(255,255,255,.04);
+    cursor: default;
+    max-width: 200px;
+    transition: background .15s;
+}
+.header-user-chip:hover { background: rgba(255,255,255,.07); }
+.header-user-avatar {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #0fc8e4, #0898b5);
+    color: #03111e;
+    font-size: 12px;
+    font-weight: 800;
+    flex-shrink: 0;
+}
+.header-user-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+}
+.header-user-role {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: var(--radius-pill);
+    background: rgba(15,200,228,.15);
+    color: var(--teal);
+    border: 1px solid rgba(15,200,228,.25);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
 .notif-dropdown-wrapper {
     position: relative;
 }

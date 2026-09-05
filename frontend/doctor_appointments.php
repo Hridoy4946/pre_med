@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Doctor') {
@@ -110,6 +110,22 @@ $myPatients = $assignedPatients->fetchAll();
 
 $rooms = $pdo->query("SELECT * FROM CLINIC_ROOM ORDER BY RoomNumber")->fetchAll();
 $minDate = date('Y-m-d\TH:i', strtotime('+30 minutes'));
+
+// Today's schedule for the doctor
+$todaySchedStmt = $pdo->prepare("
+    SELECT A.AppointmentDate, A.DurationMinutes, A.Status,
+           U.Name AS PatientName, P.PatientCode, P.RiskLevel, R.RoomNumber
+    FROM APPOINTMENT A
+    JOIN PATIENT P ON A.PatientID = P.UserID
+    JOIN `USER` U ON P.UserID = U.UserID
+    JOIN CLINIC_ROOM R ON A.RoomID = R.RoomID
+    WHERE A.DoctorID = ?
+      AND DATE(A.AppointmentDate) = CURDATE()
+      AND A.Status != 'Cancelled'
+    ORDER BY A.AppointmentDate ASC
+");
+$todaySchedStmt->execute([$doctorId]);
+$todaySchedule = $todaySchedStmt->fetchAll();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -143,6 +159,92 @@ $minDate = date('Y-m-d\TH:i', strtotime('+30 minutes'));
             font-size:11px; font-weight:700; color:#f59e0b;
             background:rgba(245,158,11,.1); border:1px solid rgba(245,158,11,.25);
             border-radius:4px; padding:2px 8px;
+        }
+
+        /* ── Today's Schedule Box ── */
+        .today-schedule-box {
+            margin-top: 24px;
+            border-radius: 12px;
+            border: 1px solid rgba(15,200,228,.2);
+            background: linear-gradient(135deg, rgba(15,200,228,.06) 0%, rgba(8,152,181,.04) 100%);
+            overflow: hidden;
+        }
+        .today-schedule-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(15,200,228,.15);
+        }
+        .today-schedule-header h4 {
+            margin: 0;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--teal);
+            display: flex;
+            align-items: center;
+            gap: 7px;
+        }
+        .today-count-badge {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 9px;
+            border-radius: 999px;
+            background: var(--teal);
+            color: #03111e;
+        }
+        .today-sched-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 10px 16px;
+            border-bottom: 1px solid rgba(255,255,255,.04);
+            transition: background .15s;
+        }
+        .today-sched-item:last-child { border-bottom: none; }
+        .today-sched-item:hover { background: rgba(255,255,255,.03); }
+        .today-sched-time {
+            min-width: 52px;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--teal);
+            line-height: 1.3;
+            text-align: center;
+            padding-top: 2px;
+        }
+        .today-sched-time small {
+            display: block;
+            font-weight: 500;
+            color: var(--muted);
+            font-size: 10px;
+        }
+        .today-sched-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .today-sched-info strong {
+            font-size: 13px;
+            display: block;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .today-sched-meta {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 3px;
+            flex-wrap: wrap;
+        }
+        .today-sched-meta span {
+            font-size: 11px;
+            color: var(--muted);
+        }
+        .today-empty {
+            padding: 18px 16px;
+            text-align: center;
+            color: var(--muted);
+            font-size: 13px;
         }
 
         /* ── Status Dropdown & Save Button in Table ── */
@@ -270,25 +372,265 @@ $minDate = date('Y-m-d\TH:i', strtotime('+30 minutes'));
             filter: brightness(1.1) !important;
             box-shadow: 0 4px 18px rgba(15,200,228,.3) !important;
         }
+
+        /* ── Today's Enhanced Schedule Box ── */
+        .day-schedule-box {
+            margin-bottom: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(15,200,228,.2);
+            background: linear-gradient(135deg, rgba(15,200,228,.05) 0%, rgba(8,152,181,.03) 100%);
+            overflow: hidden;
+        }
+        .day-schedule-hdr {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 11px 14px;
+            border-bottom: 1px solid rgba(15,200,228,.12);
+        }
+        .day-schedule-hdr h4 {
+            margin: 0;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--teal);
+        }
+        .day-schedule-hdr small {
+            font-size: 10px;
+            color: var(--muted);
+            font-weight: 500;
+        }
+        .day-slot-count {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 9px;
+            border-radius: 999px;
+            background: var(--teal);
+            color: #03111e;
+        }
+        .day-slot-free-count {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 9px;
+            border-radius: 999px;
+            background: rgba(34,212,158,.2);
+            color: #22d49e;
+            border: 1px solid rgba(34,212,158,.3);
+        }
+        .day-slots-list {
+            padding: 8px 10px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            max-height: 420px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(15,200,228,.3) transparent;
+        }
+        .day-slots-list::-webkit-scrollbar { width: 4px; }
+        .day-slots-list::-webkit-scrollbar-thumb { background: rgba(15,200,228,.3); border-radius: 4px; }
+        .day-slot {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-radius: 8px;
+            padding: 7px 10px;
+            transition: background .15s;
+        }
+        .day-slot-busy {
+            background: rgba(15,200,228,.06);
+            border: 1px solid rgba(15,200,228,.15);
+        }
+        .day-slot-free {
+            background: rgba(34,212,158,.06);
+            border: 1px solid rgba(34,212,158,.2);
+            cursor: pointer;
+        }
+        .day-slot-free:hover {
+            background: rgba(34,212,158,.14);
+            border-color: rgba(34,212,158,.5);
+            transform: translateX(2px);
+        }
+        .day-slot-time {
+            min-width: 44px;
+            font-size: 11px;
+            font-weight: 700;
+            text-align: center;
+            line-height: 1.2;
+        }
+        .day-slot-busy .day-slot-time { color: var(--teal); }
+        .day-slot-free .day-slot-time { color: #22d49e; }
+        .day-slot-pill {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 999px;
+            flex-shrink: 0;
+        }
+        .day-slot-busy .day-slot-pill {
+            background: rgba(15,200,228,.15);
+            color: var(--teal);
+        }
+        .day-slot-free .day-slot-pill {
+            background: rgba(34,212,158,.15);
+            color: #22d49e;
+        }
+        .day-slot-detail {
+            flex: 1;
+            font-size: 11px;
+            color: var(--muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .day-slot-free .day-slot-detail {
+            color: rgba(34,212,158,.7);
+            font-style: italic;
+        }
+        .day-slot-click-hint {
+            font-size: 10px;
+            color: rgba(34,212,158,.6);
+            flex-shrink: 0;
+        }
+        .day-empty { padding: 14px; text-align: center; color: var(--muted); font-size: 12px; }
+        .risk-badge-High   { color: #ff5f5b; font-weight: 700; font-size: 10px; }
+        .risk-badge-Medium { color: #f59e0b; font-weight: 700; font-size: 10px; }
     </style>
 </head>
 <body>
 <?php include __DIR__ . '/includes/nav.php'; ?>
-<div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;padding:clamp(10px,4vw,36px) clamp(10px,3vw,24px);max-width:1400px;margin:0 auto;">
+<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;padding:clamp(10px,3vw,28px) clamp(10px,2vw,20px);max-width:1700px;margin:0 auto;">
 
-<!-- LEFT: Schedule Form -->
-<div class="card" style="flex:1;min-width:300px;max-width:380px;">
-    <div class="page-header" style="margin-bottom:16px;">
+<!-- COL 1: Today's Day Planner -->
+<div class="card" style="flex:0 0 260px;min-width:220px;max-width:280px;">
+    <?php
+    /* ── Build free-slot timeline for today ─────────────────────────────
+       Working hours: 08:00 – 18:00 in 30-min increments.
+       We mark slots as BUSY if they overlap with any today appointment.
+    ── */
+    $workStart = 8;  // 8 AM
+    $workEnd   = 18; // 6 PM
+    $slotStep  = 30; // minutes
+    $todayDate = date('Y-m-d');
+
+    // Build list of busy intervals from today's appointments
+    $busyIntervals = [];
+    foreach ($todaySchedule as $apt) {
+        $s = strtotime($apt['AppointmentDate']);
+        $e = $s + (int)$apt['DurationMinutes'] * 60;
+        $busyIntervals[] = [
+            'start'    => $s,
+            'end'      => $e,
+            'patient'  => $apt['PatientName'],
+            'code'     => $apt['PatientCode'],
+            'duration' => (int)$apt['DurationMinutes'],
+            'status'   => $apt['Status'],
+            'risk'     => $apt['RiskLevel'],
+            'room'     => $apt['RoomNumber'],
+        ];
+    }
+
+    // Generate all 30-min slots from workStart to workEnd
+    $timelineSlots = [];
+    $cursor = strtotime($todayDate . ' ' . str_pad($workStart, 2, '0', STR_PAD_LEFT) . ':00:00');
+    $dayEnd = strtotime($todayDate . ' ' . str_pad($workEnd,   2, '0', STR_PAD_LEFT) . ':00:00');
+
+    while ($cursor < $dayEnd) {
+        $slotEnd = $cursor + $slotStep * 60;
+        $slotBusy = null;
+        foreach ($busyIntervals as $bi) {
+            // overlap: cursor < bi.end AND slotEnd > bi.start
+            if ($cursor < $bi['end'] && $slotEnd > $bi['start']) {
+                $slotBusy = $bi;
+                break;
+            }
+        }
+        // Only show slot if it starts at the exact start of a busy interval OR is free
+        // (skip intermediate busy slots — we show one line per appointment)
+        $isApptStart = $slotBusy && abs($cursor - $slotBusy['start']) < 60;
+        if (!$slotBusy || $isApptStart) {
+            $timelineSlots[] = [
+                'time'    => $cursor,
+                'busy'    => $slotBusy ? true : false,
+                'appt'    => $slotBusy,
+            ];
+        }
+        $cursor = $slotEnd;
+    }
+    $freeCount = count(array_filter($timelineSlots, fn($s) => !$s['busy']));
+    ?>
+
+    <!-- ── Today's Day Planner ── -->
+    <div class="page-header" style="margin-bottom:12px;">
         <div class="page-header-left">
             <p class="eyebrow">Doctor Panel</p>
-            <h2>My Appointments</h2>
-            <p class="page-subtitle">Schedule for patients or update appointment status.</p>
+            <h3 style="margin:0;font-size:15px;">Today's Schedule</h3>
         </div>
         <span class="role-pill role-doctor">Doctor</span>
     </div>
 
+    <div style="margin-bottom:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        <?php if (count($todaySchedule) > 0): ?>
+        <span class="day-slot-count"><?= count($todaySchedule) ?> busy</span>
+        <?php endif; ?>
+        <span class="day-slot-free-count"><?= $freeCount ?> free</span>
+        <span style="font-size:10px;color:var(--muted);margin-left:2px;"><?= date('M j') ?></span>
+    </div>
+
+    <div style="background:rgba(15,200,228,.04);border:1px solid rgba(15,200,228,.12);border-radius:10px;overflow:hidden;">
+        <div class="day-schedule-hdr">
+            <h4>📅 Today — <?= date('l, M j') ?></h4>
+            <div style="display:flex;gap:6px;align-items:center;">
+                <?php if (count($todaySchedule) > 0): ?>
+                <span class="day-slot-count"><?= count($todaySchedule) ?> busy</span>
+                <?php endif; ?>
+                <span class="day-slot-free-count"><?= $freeCount ?> free</span>
+            </div>
+        </div>
+        <?php if ($timelineSlots): ?>
+        <div class="day-slots-list" id="doc-day-planner">
+            <?php foreach ($timelineSlots as $slot):
+                $slotTimeStr = date('H:i', $slot['time']);
+                $slotLabel   = date('g:i A', $slot['time']);
+            ?>
+            <?php if ($slot['busy']): ?>
+            <!-- BUSY SLOT -->
+            <div class="day-slot day-slot-busy">
+                <div class="day-slot-time"><?= date('g:i', $slot['time']) ?><br><small style="font-weight:400;color:var(--muted);font-size:9px;"><?= date('A', $slot['time']) ?></small></div>
+                <span class="day-slot-pill">Busy</span>
+                <div class="day-slot-detail">
+                    <?= htmlspecialchars($slot['appt']['patient']) ?>
+                    · <?= $slot['appt']['duration'] ?> min
+                    · Rm <?= htmlspecialchars($slot['appt']['room']) ?>
+                    <?php if ($slot['appt']['risk'] !== 'Low'): ?>
+                    <span class="risk-badge-<?= $slot['appt']['risk'] ?>"> ⚠<?= $slot['appt']['risk'] ?></span>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php else: ?>
+            <!-- FREE SLOT — clickable to auto-fill datetime -->
+            <div class="day-slot day-slot-free"
+                 data-slot-time="<?= $todayDate ?>T<?= $slotTimeStr ?>"
+                 onclick="fillScheduleDate(this.dataset.slotTime)"
+                 title="Click to book at <?= $slotLabel ?>">
+                <div class="day-slot-time"><?= date('g:i', $slot['time']) ?><br><small style="font-weight:400;font-size:9px;opacity:.7;"><?= date('A', $slot['time']) ?></small></div>
+                <span class="day-slot-pill">Free</span>
+                <div class="day-slot-detail">Available slot</div>
+                <span class="day-slot-click-hint">↑ Use</span>
+            </div>
+            <?php endif; ?>
+            <?php endforeach; ?>
+        </div>
+        <?php else: ?>
+        <div class="day-empty">🗓 No working hours data for today.</div>
+        <?php endif; ?>
+    </div><!-- end planner inner box -->
+    <div style="margin-top:14px;"><a class="text-link" href="dashboard.php">← Back to Dashboard</a></div>
+</div><!-- end col1 day planner -->
+
+<!-- COL 2: Schedule for Patient form -->
+<div class="card" style="flex:0 0 280px;min-width:240px;max-width:300px;">
     <h3 style="margin-top:0;">Schedule for Patient</h3>
-    <p style="font-size:13px;color:var(--muted);margin-top:-6px;">Book an appointment for one of your assigned patients.</p>
+    <p style="font-size:12px;color:var(--muted);margin-top:-6px;margin-bottom:12px;">Click a <span style="color:#22d49e;font-weight:700;">free slot</span> on the left to auto-fill the time.</p>
 
     <?php if ($schedMsg): ?><p class="notice success"><?= $schedMsg ?></p><?php endif; ?>
     <?php if ($schedError): ?><p class="notice error"><?= htmlspecialchars($schedError) ?></p><?php endif; ?>
@@ -336,11 +678,11 @@ $minDate = date('Y-m-d\TH:i', strtotime('+30 minutes'));
         <div class="empty-state compact"><strong>No patients assigned yet.</strong><span>Patients will appear here once assigned to you.</span></div>
     <?php endif; ?>
 
-    <div style="margin-top:20px;"><a class="text-link" href="dashboard.php">← Back to Dashboard</a></div>
-</div>
+    <div style="margin-top:16px;"><a class="text-link" href="dashboard.php">← Back to Dashboard</a></div>
+</div><!-- end col2 schedule form -->
 
-<!-- RIGHT: Appointment list -->
-<div class="card" style="flex:3;min-width:340px;">
+<!-- COL 3: Appointment list -->
+<div class="card" style="flex:1;min-width:420px;">
     <?php if ($updateMsg): ?><p class="notice success"><?= $updateMsg ?></p><?php endif; ?>
 
     <!-- Summary metrics -->
@@ -514,6 +856,39 @@ function switchTab(name, btn) {
     document.getElementById('sec_' + name).classList.add('active');
 }
 
+// ── Free-slot click → auto-fill the datetime input ──────────────────────
+function fillScheduleDate(slotTime) {
+    const input = document.getElementById('sched_date');
+    if (!input) return;
+
+    input.value = slotTime;
+
+    // Visual feedback: flash teal border on input
+    input.style.borderColor = '#0fc8e4';
+    input.style.boxShadow   = '0 0 0 3px rgba(15,200,228,.25)';
+    setTimeout(() => {
+        input.style.borderColor = '';
+        input.style.boxShadow   = '';
+    }, 1800);
+
+    // Highlight selected free slot, un-highlight others
+    document.querySelectorAll('.day-slot-free').forEach(el => {
+        el.style.background   = '';
+        el.style.borderColor  = '';
+    });
+    const clicked = document.querySelector(`.day-slot-free[data-slot-time="${slotTime}"]`);
+    if (clicked) {
+        clicked.style.background  = 'rgba(34,212,158,.22)';
+        clicked.style.borderColor = 'rgba(34,212,158,.7)';
+        // Update hint text
+        const hint = clicked.querySelector('.day-slot-click-hint');
+        if (hint) hint.textContent = '✓ Selected';
+    }
+
+    // Scroll form into view
+    document.getElementById('sched_date')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 // Sched duration buttons
 const schedDurInput = document.getElementById('sched_duration');
 if (schedDurInput) {
@@ -525,6 +900,7 @@ if (schedDurInput) {
         });
     });
 }
+
 // Status cancellation confirmation
 document.querySelectorAll('form').forEach(f => {
     f.addEventListener('submit', e => {
@@ -547,6 +923,7 @@ document.querySelectorAll('form').forEach(f => {
     });
 });
 </script>
+
 <?php include __DIR__ . '/includes/footer_nav.php'; ?>
 </body>
 </html>

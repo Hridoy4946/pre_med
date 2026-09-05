@@ -55,6 +55,15 @@ $unreadCount = count($userNotifications);
     </nav>
 
     <div class="header-right-group">
+        <!-- Logged-in user name -->
+        <div class="header-user-chip" title="Signed in as <?= htmlspecialchars($userName) ?>">
+            <span class="header-user-avatar"><?= mb_strtoupper(mb_substr($userName, 0, 1)) ?></span>
+            <span class="header-user-name"><?= htmlspecialchars($isDoctor ? format_doctor_name($userName) : $userName) ?></span>
+            <?php if ($role !== 'Patient'): ?>
+            <span class="header-user-role"><?= htmlspecialchars($role) ?></span>
+            <?php endif; ?>
+        </div>
+
         <!-- Notification Popover Trigger -->
         <div class="notif-dropdown-wrapper" id="notif_wrapper">
             <button type="button" class="notif-trigger-btn" id="notif_trigger_btn" aria-label="Notifications" title="Notifications" aria-expanded="false">

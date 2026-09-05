@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Staff') {
@@ -64,6 +64,27 @@ $statusStyles = [
     'Completed' => ['color' => 'var(--muted)', 'background' => 'rgba(122,153,176,.12)'],
     'Cancelled' => ['color' => 'var(--coral)', 'background' => 'rgba(255,95,91,.12)'],
 ];
+
+// Today's schedule grouped by doctor (for the summary box)
+$todayStmt = $pdo->query("
+    SELECT A.AppointmentDate, A.DurationMinutes, A.Status,
+           DoctorUser.Name AS DoctorName, A.DoctorID,
+           PatientUser.Name AS PatientName, P.PatientCode, R.RoomNumber
+    FROM APPOINTMENT A
+    JOIN `USER` PatientUser ON PatientUser.UserID = A.PatientID
+    JOIN `USER` DoctorUser  ON DoctorUser.UserID  = A.DoctorID
+    JOIN PATIENT P ON A.PatientID = P.UserID
+    JOIN CLINIC_ROOM R ON R.RoomID = A.RoomID
+    WHERE DATE(A.AppointmentDate) = CURDATE()
+      AND A.Status != 'Cancelled'
+    ORDER BY A.AppointmentDate ASC
+");
+$todayAll = $todayStmt->fetchAll();
+// Group by DoctorName
+$todayByDoctor = [];
+foreach ($todayAll as $row) {
+    $todayByDoctor[$row['DoctorName']][] = $row;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -73,6 +94,95 @@ $statusStyles = [
     <title>Staff Appointments — PreMed</title>
     <meta name="description" content="Manage patient appointments and booking status.">
     <link rel="stylesheet" href="../resources/css/style.css?v=<?= filemtime(dirname(__DIR__) . '/resources/css/style.css') ?>">
+    <style>
+        /* ── Today's Schedule Box (staff) ── */
+        .today-schedule-box {
+            border-radius: 12px;
+            border: 1px solid rgba(15,200,228,.2);
+            background: linear-gradient(135deg, rgba(15,200,228,.06) 0%, rgba(8,152,181,.03) 100%);
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+        .today-schedule-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 13px 18px;
+            border-bottom: 1px solid rgba(15,200,228,.15);
+        }
+        .today-schedule-header h3 {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--teal);
+        }
+        .today-count-badge {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 10px;
+            border-radius: 999px;
+            background: var(--teal);
+            color: #03111e;
+        }
+        .today-doctor-group { padding: 0; }
+        .today-doctor-label {
+            padding: 8px 18px 4px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            color: var(--muted);
+            border-bottom: 1px solid rgba(255,255,255,.04);
+            background: rgba(255,255,255,.02);
+        }
+        .today-sched-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 9px 18px;
+            border-bottom: 1px solid rgba(255,255,255,.04);
+            transition: background .15s;
+        }
+        .today-sched-item:last-child { border-bottom: none; }
+        .today-sched-item:hover { background: rgba(255,255,255,.03); }
+        .today-sched-time {
+            min-width: 50px;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--teal);
+            line-height: 1.3;
+            text-align: center;
+            padding-top: 1px;
+        }
+        .today-sched-time small {
+            display: block;
+            font-weight: 500;
+            color: var(--muted);
+            font-size: 10px;
+        }
+        .today-sched-info { flex: 1; min-width: 0; }
+        .today-sched-info strong { font-size: 13px; display: block; }
+        .today-sched-meta {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 2px;
+            flex-wrap: wrap;
+        }
+        .today-sched-meta span { font-size: 11px; color: var(--muted); }
+        .today-empty {
+            padding: 18px;
+            text-align: center;
+            color: var(--muted);
+            font-size: 13px;
+        }
+        .code-badge {
+            font-size: 10px; font-family: monospace;
+            background: rgba(15,200,228,.12); color: var(--teal);
+            border: 1px solid rgba(15,200,228,.25); border-radius: 4px;
+            padding: 1px 6px;
+        }
+    </style>
 </head>
 <body>
 <?php include __DIR__ . '/includes/nav.php'; ?>
@@ -88,6 +198,53 @@ $statusStyles = [
 
     <?php if ($msg): ?><p class="notice success"><?= $msg ?></p><?php endif; ?>
     <?php if ($error): ?><p class="notice error"><?= htmlspecialchars($error) ?></p><?php endif; ?>
+
+    <!-- Today's Doctor Schedule Box -->
+    <div class="today-schedule-box">
+        <div class="today-schedule-header">
+            <h3>📅 Today's Doctor Schedule &mdash; <?= date('l, M j, Y') ?></h3>
+            <?php if ($todayAll): ?>
+            <span class="today-count-badge"><?= count($todayAll) ?> appt<?= count($todayAll) !== 1 ? 's' : '' ?></span>
+            <?php endif; ?>
+        </div>
+        <?php if ($todayByDoctor): ?>
+        <?php
+        $todayStatColors = [
+            'Scheduled' => '#0fc8e4',
+            'Confirmed'  => '#34d399',
+            'Completed'  => '#7a99b0',
+        ];
+        foreach ($todayByDoctor as $docName => $appts): ?>
+        <div class="today-doctor-group">
+            <div class="today-doctor-label"><?= htmlspecialchars(format_doctor_name($docName)) ?> &mdash; <?= count($appts) ?> today</div>
+            <?php foreach ($appts as $ts):
+                $tsc = $todayStatColors[$ts['Status']] ?? '#0fc8e4';
+            ?>
+            <div class="today-sched-item">
+                <div class="today-sched-time">
+                    <?= date('g:i', strtotime($ts['AppointmentDate'])) ?>
+                    <small><?= date('A', strtotime($ts['AppointmentDate'])) ?></small>
+                </div>
+                <div class="today-sched-info">
+                    <strong><?= htmlspecialchars($ts['PatientName']) ?></strong>
+                    <div class="today-sched-meta">
+                        <span class="code-badge"><?= htmlspecialchars($ts['PatientCode']) ?></span>
+                        <span>&middot;</span>
+                        <span><?= (int)$ts['DurationMinutes'] ?> min</span>
+                        <span>&middot;</span>
+                        <span>Rm <?= htmlspecialchars($ts['RoomNumber']) ?></span>
+                        <span>&middot;</span>
+                        <span style="color:<?= $tsc ?>;font-weight:700;"><?= htmlspecialchars($ts['Status']) ?></span>
+                    </div>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <?php endforeach; ?>
+        <?php else: ?>
+        <div class="today-empty">🗓 No appointments are scheduled for today across all doctors.</div>
+        <?php endif; ?>
+    </div>
 
     <div class="staff-appointment-layout">
         <section class="card staff-appointment-card staff-booking-card">
