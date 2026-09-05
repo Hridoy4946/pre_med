@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Doctor') {
@@ -9,14 +9,10 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Doctor') {
 $message = '';
 $error = '';
 // Get current doctor's department
-$myDeptStmt = $pdo->prepare('SELECT DeptID FROM DOCTOR WHERE UserID = ?');
-$myDeptStmt->execute([$_SESSION['user_id']]);
-$myDeptId = $myDeptStmt->fetchColumn();
+$myDeptId = db_fetch_column($conn, 'SELECT DeptID FROM DOCTOR WHERE UserID = ?', [$_SESSION['user_id']]);
 
 // Only show doctors in the same department
-$doctorsStmt = $pdo->prepare("SELECT D.UserID, U.Name, Dep.DeptName FROM DOCTOR D JOIN `USER` U ON D.UserID = U.UserID JOIN DEPARTMENT Dep ON D.DeptID = Dep.DeptID WHERE D.UserID <> ? AND D.DeptID = ? ORDER BY U.Name");
-$doctorsStmt->execute([$_SESSION['user_id'], $myDeptId]);
-$doctors = $doctorsStmt->fetchAll();
+$doctors = db_fetch_all($conn, "SELECT D.UserID, U.Name, Dep.DeptName FROM DOCTOR D JOIN `USER` U ON D.UserID = U.UserID JOIN DEPARTMENT Dep ON D.DeptID = Dep.DeptID WHERE D.UserID <> ? AND D.DeptID = ? ORDER BY U.Name", [$_SESSION['user_id'], $myDeptId]);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_csrf();
@@ -24,33 +20,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$newDoctorId) {
         $error = 'Select a receiving doctor.';
     } else {
+        $inTx = false;
         try {
-            $pdo->beginTransaction();
-            $deptStmt = $pdo->prepare('SELECT DeptID FROM DOCTOR WHERE UserID = ?');
-            $deptStmt->execute([$_SESSION['user_id']]);
-            $outgoingDept = $deptStmt->fetchColumn();
-            $deptStmt->execute([$newDoctorId]);
-            $incomingDept = $deptStmt->fetchColumn();
+            db_begin_transaction($conn);
+            $inTx = true;
+            $outgoingDept = db_fetch_column($conn, 'SELECT DeptID FROM DOCTOR WHERE UserID = ?', [$_SESSION['user_id']]);
+            $incomingDept = db_fetch_column($conn, 'SELECT DeptID FROM DOCTOR WHERE UserID = ?', [$newDoctorId]);
             if (!$outgoingDept || $outgoingDept !== $incomingDept) {
                 throw new RuntimeException('The receiving doctor must be in the same department.');
             }
 
-            $conflictStmt = $pdo->prepare("SELECT A.AppointmentID FROM APPOINTMENT A JOIN APPOINTMENT Existing ON Existing.DoctorID = ? AND Existing.AppointmentDate = A.AppointmentDate WHERE A.DoctorID = ? AND A.AppointmentDate >= NOW() LIMIT 1");
-            $conflictStmt->execute([$newDoctorId, $_SESSION['user_id']]);
-            if ($conflictStmt->fetch()) {
+            $conflict = db_fetch_one($conn, "SELECT A.AppointmentID FROM APPOINTMENT A JOIN APPOINTMENT Existing ON Existing.DoctorID = ? AND Existing.AppointmentDate = A.AppointmentDate WHERE A.DoctorID = ? AND A.AppointmentDate >= NOW() LIMIT 1", [$newDoctorId, $_SESSION['user_id']]);
+            if ($conflict) {
                 throw new RuntimeException('Transfer stopped because the receiving doctor has a conflicting appointment.');
             }
 
-            $transferStmt = $pdo->prepare('UPDATE APPOINTMENT SET DoctorID = ? WHERE DoctorID = ? AND AppointmentDate >= NOW()');
-            $transferStmt->execute([$newDoctorId, $_SESSION['user_id']]);
-            $count = $transferStmt->rowCount();
-            $patientStmt = $pdo->prepare('UPDATE PATIENT SET AssignedDoctorID = ? WHERE AssignedDoctorID = ?');
-            $patientStmt->execute([$newDoctorId, $_SESSION['user_id']]);
-            $pdo->commit();
+            db_execute($conn, 'UPDATE APPOINTMENT SET DoctorID = ? WHERE DoctorID = ? AND AppointmentDate >= NOW()', [$newDoctorId, $_SESSION['user_id']]);
+            $count = db_affected_rows($conn);
+            db_execute($conn, 'UPDATE PATIENT SET AssignedDoctorID = ? WHERE AssignedDoctorID = ?', [$newDoctorId, $_SESSION['user_id']]);
+            db_commit($conn);
+            $inTx = false;
             $message = $count . ' active appointment(s) transferred successfully.';
         } catch (Throwable $exception) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
+            if ($inTx) {
+                db_rollback($conn);
             }
             $error = $exception->getMessage();
         }

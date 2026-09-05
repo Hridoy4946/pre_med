@@ -10,6 +10,8 @@
  * - Saved invoices with settled and pending balances for Print Bill testing
  * - Lab tests and diagnostic reports for Print Report testing and delivery toggling
  * - Pre-populated audit log entries
+ *
+ * Uses Procedural MySQLi.
  */
 
 require_once __DIR__ . '/db.php';
@@ -19,7 +21,7 @@ echo "POPULATING PREMED SYSTEM DATA FOR FULL SYSTEM TESTING\n";
 echo "========================================================\n\n";
 
 try {
-    $pdo->exec("SET FOREIGN_KEY_CHECKS = 0");
+    mysqli_query($conn, "SET FOREIGN_KEY_CHECKS = 0");
 
     // 1. Ensure Departments
     echo "1. Populating Departments...\n";
@@ -30,9 +32,9 @@ try {
         [4, 'Pediatrics'],
         [5, 'Orthopedics & Trauma']
     ];
+    $sqlDept = "INSERT INTO DEPARTMENT (DeptID, DeptName) VALUES (?, ?) ON DUPLICATE KEY UPDATE DeptName = VALUES(DeptName)";
     foreach ($depts as $d) {
-        $stmt = $pdo->prepare("INSERT INTO DEPARTMENT (DeptID, DeptName) VALUES (?, ?) ON DUPLICATE KEY UPDATE DeptName = VALUES(DeptName)");
-        $stmt->execute($d);
+        db_execute($conn, $sqlDept, $d);
     }
 
     // 2. Ensure Clinic Rooms
@@ -46,9 +48,9 @@ try {
         [6, '302'],
         [7, 'ICU-1']
     ];
+    $sqlRoom = "INSERT INTO CLINIC_ROOM (RoomID, RoomNumber) VALUES (?, ?) ON DUPLICATE KEY UPDATE RoomNumber = VALUES(RoomNumber)";
     foreach ($rooms as $r) {
-        $stmt = $pdo->prepare("INSERT INTO CLINIC_ROOM (RoomID, RoomNumber) VALUES (?, ?) ON DUPLICATE KEY UPDATE RoomNumber = VALUES(RoomNumber)");
-        $stmt->execute($r);
+        db_execute($conn, $sqlRoom, $r);
     }
 
     // 3. Ensure Core Users (All passwords = DemoPass123!)
@@ -67,10 +69,10 @@ try {
         [10, 'Mary Begum',          'demo.guardian@example.com', $pwdHash, '45 Lake Road'],
         [11, 'Dr. Aris Thorne',     'doctor4@example.com',        $pwdHash, '101 Wellness Way'],
     ];
+    $sqlUser = "INSERT INTO `USER` (UserID, Name, Email, Password, Address) VALUES (?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE Name = VALUES(Name), Email = VALUES(Email), Password = VALUES(Password), Address = VALUES(Address)";
     foreach ($users as $u) {
-        $stmt = $pdo->prepare("INSERT INTO `USER` (UserID, Name, Email, Password, Address) VALUES (?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE Name = VALUES(Name), Email = VALUES(Email), Password = VALUES(Password), Address = VALUES(Address)");
-        $stmt->execute($u);
+        db_execute($conn, $sqlUser, $u);
     }
 
     // 4. Ensure Roles
@@ -82,12 +84,13 @@ try {
         [3, 2], // Dr. Sharma -> Neurology
         [11, 3] // Dr. Thorne -> General Medicine
     ];
+    $sqlDoc = "INSERT INTO DOCTOR (UserID, DeptID) VALUES (?, ?) ON DUPLICATE KEY UPDATE DeptID = VALUES(DeptID)";
     foreach ($doctors as $doc) {
-        $pdo->prepare("INSERT INTO DOCTOR (UserID, DeptID) VALUES (?, ?) ON DUPLICATE KEY UPDATE DeptID = VALUES(DeptID)")->execute($doc);
+        db_execute($conn, $sqlDoc, $doc);
     }
 
     // Staff
-    $pdo->prepare("INSERT INTO STAFF (UserID, DeptID, Title) VALUES (9, 3, 'Care Operations Coordinator') ON DUPLICATE KEY UPDATE Title = VALUES(Title)")->execute();
+    db_execute($conn, "INSERT INTO STAFF (UserID, DeptID, Title) VALUES (9, 3, 'Care Operations Coordinator') ON DUPLICATE KEY UPDATE Title = VALUES(Title)");
 
     // Patients
     $patients = [
@@ -97,16 +100,16 @@ try {
         [7, 'PRE-00007', 3, 'High',   'Requires Attention', 'AB-', 'Female', '1958-03-14'],
         [8, 'PRE-00008', 2, 'Low',    'Stable',             'O-',  'Male',   '1980-07-30'],
     ];
+    $sqlPat = "INSERT INTO PATIENT (UserID, PatientCode, AssignedDoctorID, RiskLevel, ProfileStatus, BloodGroup, Gender, DateOfBirth)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE PatientCode = VALUES(PatientCode), AssignedDoctorID = VALUES(AssignedDoctorID), RiskLevel = VALUES(RiskLevel), ProfileStatus = VALUES(ProfileStatus), BloodGroup = VALUES(BloodGroup), Gender = VALUES(Gender), DateOfBirth = VALUES(DateOfBirth)";
     foreach ($patients as $p) {
-        $stmt = $pdo->prepare("INSERT INTO PATIENT (UserID, PatientCode, AssignedDoctorID, RiskLevel, ProfileStatus, BloodGroup, Gender, DateOfBirth)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE PatientCode = VALUES(PatientCode), AssignedDoctorID = VALUES(AssignedDoctorID), RiskLevel = VALUES(RiskLevel), ProfileStatus = VALUES(ProfileStatus), BloodGroup = VALUES(BloodGroup), Gender = VALUES(Gender), DateOfBirth = VALUES(DateOfBirth)");
-        $stmt->execute($p);
+        db_execute($conn, $sqlPat, $p);
     }
 
     // Guardian
-    $pdo->prepare("INSERT INTO GUARDIAN (PatientID, GuardianUserID, GuardianName, Phone) VALUES (7, 10, 'Mary Begum', '+880-1711-234567')
-        ON DUPLICATE KEY UPDATE GuardianName = VALUES(GuardianName), Phone = VALUES(Phone)")->execute();
+    db_execute($conn, "INSERT INTO GUARDIAN (PatientID, GuardianUserID, GuardianName, Phone) VALUES (7, 10, 'Mary Begum', '+880-1711-234567')
+        ON DUPLICATE KEY UPDATE GuardianName = VALUES(GuardianName), Phone = VALUES(Phone)");
 
     // Insurance
     $insurances = [
@@ -116,9 +119,10 @@ try {
         [7, 100.00, 'Senior Care Plan (Full Coverage)'],
         [8, 0.00,  'Self-pay Standard'],
     ];
+    $sqlIns = "INSERT INTO PATIENT_INSURANCE (PatientID, CoveragePercentage, ProviderName) VALUES (?, ?, ?)
+        ON DUPLICATE KEY UPDATE CoveragePercentage = VALUES(CoveragePercentage), ProviderName = VALUES(ProviderName)";
     foreach ($insurances as $ins) {
-        $pdo->prepare("INSERT INTO PATIENT_INSURANCE (PatientID, CoveragePercentage, ProviderName) VALUES (?, ?, ?)
-            ON DUPLICATE KEY UPDATE CoveragePercentage = VALUES(CoveragePercentage), ProviderName = VALUES(ProviderName)")->execute($ins);
+        db_execute($conn, $sqlIns, $ins);
     }
 
     // 5. Expand Pharmacy & Supplies Inventory (MEDICATION)
@@ -141,15 +145,15 @@ try {
         [15, 'Disposable Syringes 5mL',     500, 1.20,  'Available'],
         [16, 'N95 Protective Face Masks',   200, 4.00,  'Available'],
     ];
+    $sqlMed = "INSERT INTO MEDICATION (MedicationID, MedicationName, StockQuantity, UnitCost, InventoryStatus) VALUES (?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE MedicationName = VALUES(MedicationName), StockQuantity = VALUES(StockQuantity), UnitCost = VALUES(UnitCost), InventoryStatus = VALUES(InventoryStatus)";
     foreach ($meds as $m) {
-        $stmt = $pdo->prepare("INSERT INTO MEDICATION (MedicationID, MedicationName, StockQuantity, UnitCost, InventoryStatus) VALUES (?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE MedicationName = VALUES(MedicationName), StockQuantity = VALUES(StockQuantity), UnitCost = VALUES(UnitCost), InventoryStatus = VALUES(InventoryStatus)");
-        $stmt->execute($m);
+        db_execute($conn, $sqlMed, $m);
     }
 
-    // 6. Populate Appointments (Ensure 6+ rows for Alex to test 5-row fixed box scrollbar)
+    // 6. Populate Appointments
     echo "6. Populating Appointments Ledger (Enabling 5-Row Fixed Scroll Box for Alex)...\n";
-    $pdo->exec("DELETE FROM APPOINTMENT");
+    mysqli_query($conn, "DELETE FROM APPOINTMENT");
     $appts = [
         // Alex Rahman (4) - 7 appointments across past & future
         ['2026-08-10 10:00:00', 30, 'Completed', 4, 1, 1],
@@ -178,20 +182,20 @@ try {
         ['2026-08-22 10:00:00', 45, 'Completed', 7, 3, 2],
         ['2026-08-29 11:00:00', 30, 'Completed', 7, 3, 2],
     ];
-    $insAppt = $pdo->prepare("INSERT INTO APPOINTMENT (AppointmentDate, DurationMinutes, Status, PatientID, DoctorID, RoomID) VALUES (?, ?, ?, ?, ?, ?)");
+    $sqlAppt = "INSERT INTO APPOINTMENT (AppointmentDate, DurationMinutes, Status, PatientID, DoctorID, RoomID) VALUES (?, ?, ?, ?, ?, ?)";
     foreach ($appts as $a) {
-        $insAppt->execute($a);
+        db_execute($conn, $sqlAppt, $a);
     }
 
     // 7. Populate Visits, Consultations, Lab Tests, Diagnoses, Prescriptions
     echo "7. Populating Clinical Records, Visits & Results (Enabling 5-Row Fixed Scroll Box for Alex)...\n";
-    $pdo->exec("DELETE FROM INVOICE");
-    $pdo->exec("DELETE FROM PRESCRIPTION_ITEM");
-    $pdo->exec("DELETE FROM PRESCRIPTION");
-    $pdo->exec("DELETE FROM LAB_TEST");
-    $pdo->exec("DELETE FROM CONSULTATION");
-    $pdo->exec("DELETE FROM DIAGNOSIS");
-    $pdo->exec("DELETE FROM VISIT");
+    mysqli_query($conn, "DELETE FROM INVOICE");
+    mysqli_query($conn, "DELETE FROM PRESCRIPTION_ITEM");
+    mysqli_query($conn, "DELETE FROM PRESCRIPTION");
+    mysqli_query($conn, "DELETE FROM LAB_TEST");
+    mysqli_query($conn, "DELETE FROM CONSULTATION");
+    mysqli_query($conn, "DELETE FROM DIAGNOSIS");
+    mysqli_query($conn, "DELETE FROM VISIT");
 
     // Visits: 7 visits for Alex Rahman (Patient 4), plus other patients
     $visits = [
@@ -214,9 +218,9 @@ try {
         // John (8)
         [13, '2026-09-02 11:00:00', 8],
     ];
-    $insVisit = $pdo->prepare("INSERT INTO VISIT (VisitID, AdmissionDate, PatientID) VALUES (?, ?, ?)");
+    $sqlVisit = "INSERT INTO VISIT (VisitID, AdmissionDate, PatientID) VALUES (?, ?, ?)";
     foreach ($visits as $v) {
-        $insVisit->execute($v);
+        db_execute($conn, $sqlVisit, $v);
     }
 
     // Diagnoses
@@ -235,9 +239,9 @@ try {
         [12, 'Acute viral gastroenteritis with moderate dehydration'],
         [13, 'Routine preventive health evaluation — no acute pathology identified'],
     ];
-    $insDiag = $pdo->prepare("INSERT INTO DIAGNOSIS (VisitID, DiagnosisText) VALUES (?, ?)");
+    $sqlDiag = "INSERT INTO DIAGNOSIS (VisitID, DiagnosisText) VALUES (?, ?)";
     foreach ($diagnoses as $d) {
-        $insDiag->execute($d);
+        db_execute($conn, $sqlDiag, $d);
     }
 
     // Consultations
@@ -256,9 +260,9 @@ try {
         ['Gastroenterology visit: acute nausea and cramps. Prescribed oral rehydration therapy.', 12, 2, 450.00],
         ['Annual executive health checkup: ECG, blood chemistry, fasting lipid profile reviewed.', 13, 2, 600.00],
     ];
-    $insCons = $pdo->prepare("INSERT INTO CONSULTATION (Notes, VisitID, DoctorID, Cost) VALUES (?, ?, ?, ?)");
+    $sqlCons = "INSERT INTO CONSULTATION (Notes, VisitID, DoctorID, Cost) VALUES (?, ?, ?, ?)";
     foreach ($consultations as $c) {
-        $insCons->execute($c);
+        db_execute($conn, $sqlCons, $c);
     }
 
     // Lab Tests
@@ -277,12 +281,12 @@ try {
         ['Rotavirus Rapid Antigen Test: Positive. Stool Occult Blood: Negative.', 12, 450.00],
         ['Comprehensive Metabolic Panel (CMP) + Lipid Panel: Cholesterol 185 mg/dL, Fasting Glucose 94 mg/dL.', 13, 650.00],
     ];
-    $insLab = $pdo->prepare("INSERT INTO LAB_TEST (Result, VisitID, Cost) VALUES (?, ?, ?)");
+    $sqlLab = "INSERT INTO LAB_TEST (Result, VisitID, Cost) VALUES (?, ?, ?)";
     foreach ($labTests as $l) {
-        $insLab->execute($l);
+        db_execute($conn, $sqlLab, $l);
     }
 
-    // Prescriptions (7 prescriptions for Alex Rahman to test 5-row fixed box scrollbar)
+    // Prescriptions
     $prescriptions = [
         [1,  1, '2026-08-10 10:30:00'],
         [2,  2, '2026-08-18 12:00:00'],
@@ -295,9 +299,9 @@ try {
         [9,  10, '2026-08-22 10:45:00'],
         [10, 11, '2026-08-29 11:30:00'],
     ];
-    $insPresc = $pdo->prepare("INSERT INTO PRESCRIPTION (PrescriptionID, VisitID, PrescribedAt) VALUES (?, ?, ?)");
+    $sqlPresc = "INSERT INTO PRESCRIPTION (PrescriptionID, VisitID, PrescribedAt) VALUES (?, ?, ?)";
     foreach ($prescriptions as $pr) {
-        $insPresc->execute($pr);
+        db_execute($conn, $sqlPresc, $pr);
     }
 
     // Prescription Items
@@ -313,41 +317,34 @@ try {
         [9, 3, 'Lisinopril 10mg — 1 tablet every morning', 30],
         [10, 10, 'Amlodipine 5mg — 1 tablet daily', 30],
     ];
-    $insItem = $pdo->prepare("INSERT INTO PRESCRIPTION_ITEM (PrescriptionID, MedicationID, Dosage, Quantity) VALUES (?, ?, ?, ?)");
+    $sqlItem = "INSERT INTO PRESCRIPTION_ITEM (PrescriptionID, MedicationID, Dosage, Quantity) VALUES (?, ?, ?, ?)";
     foreach ($items as $it) {
-        $insItem->execute($it);
+        db_execute($conn, $sqlItem, $it);
     }
 
-    // 8. Populate Saved Invoices (Ensure multiple invoices for billing page & testing Print Bill)
+    // 8. Populate Saved Invoices
     echo "8. Populating Saved Invoices & Billing Records...\n";
     $invoices = [
-        // Visit 1 (Alex - 80% Insured)
         ['2026-08-11', 252.50, 1],
-        // Visit 3 (Alex - 80% Insured)
         ['2026-08-26', 370.00, 3],
-        // Visit 6 (Alex - 80% Insured)
         ['2026-09-03', 178.00, 6],
-        // Visit 8 (Maria - 60% Insured)
         ['2026-08-29', 1516.00, 8],
-        // Visit 10 (Fatima - 100% Insured, OutOfPocket = 0)
         ['2026-08-23', 0.00, 10],
-        // Visit 13 (John - Self-Pay, 0% Insured)
         ['2026-09-02', 1250.00, 13],
     ];
-    $insInv = $pdo->prepare("INSERT INTO INVOICE (Date, OutOfPocket, VisitID) VALUES (?, ?, ?)");
+    $sqlInv = "INSERT INTO INVOICE (Date, OutOfPocket, VisitID) VALUES (?, ?, ?)";
     foreach ($invoices as $iv) {
-        $insInv->execute($iv);
+        db_execute($conn, $sqlInv, $iv);
     }
 
     // 9. Populate Uploaded Patient Documents & Real Files
     echo "9. Generating Real Uploaded Sample Documents in resources/uploads/...\n";
-    $pdo->exec("DELETE FROM PATIENT_DOCUMENT");
+    mysqli_query($conn, "DELETE FROM PATIENT_DOCUMENT");
     $uploadDir = dirname(__DIR__) . '/resources/uploads';
     if (!is_dir($uploadDir)) {
         mkdir($uploadDir, 0777, true);
     }
 
-    // Helper to write minimal valid mock PDF
     $createMockPdf = function($filePath, $title, $patientName) {
         $content = "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n";
         $content .= "3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R/Resources<<>>/Contents 4 0 R>>endobj\n";
@@ -360,14 +357,12 @@ try {
         file_put_contents($filePath, $content);
     };
 
-    // Helper to write 1x1 transparent PNG
     $createMockPng = function($filePath) {
         $pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
         file_put_contents($filePath, base64_decode($pngBase64));
     };
 
     $docs = [
-        // Alex Rahman (Patient 4) - 6 documents to test 5-row fixed scrollable box
         ['Blood_Chemistry_Panel_2026.pdf',   'doc_alex_blood_panel.pdf',      'application/pdf', '2026-08-10 11:00:00', 4, 'pdf'],
         ['Chest_XRay_Right_Lobe.png',         'doc_alex_chest_xray.png',       'image/png',       '2026-08-25 10:30:00', 4, 'png'],
         ['Spirometry_Pulmonary_Report.pdf',   'doc_alex_spirometry.pdf',       'application/pdf', '2026-08-28 16:00:00', 4, 'pdf'],
@@ -375,12 +370,11 @@ try {
         ['Prescription_Slip_Sep2026.pdf',     'doc_alex_prescription_scan.pdf','application/pdf', '2026-09-03 11:15:00', 4, 'pdf'],
         ['Immunization_Vaccine_Card.pdf',     'doc_alex_vaccine_card.pdf',     'application/pdf', '2026-09-04 09:45:00', 4, 'pdf'],
 
-        // Fatima Begum (Patient 7)
         ['Cardiac_Echocardiogram_Color.pdf',  'doc_fatima_echo_scan.pdf',      'application/pdf', '2026-08-29 11:45:00', 7, 'pdf'],
         ['ECG_Rhythm_Strip_Aug2026.png',      'doc_fatima_ecg_strip.png',      'image/png',       '2026-08-22 11:15:00', 7, 'png'],
     ];
 
-    $insDoc = $pdo->prepare("INSERT INTO PATIENT_DOCUMENT (FileName, StoredName, MimeType, UploadedAt, PatientID) VALUES (?, ?, ?, ?, ?)");
+    $sqlDocIns = "INSERT INTO PATIENT_DOCUMENT (FileName, StoredName, MimeType, UploadedAt, PatientID) VALUES (?, ?, ?, ?, ?)";
     foreach ($docs as $d) {
         $filePath = $uploadDir . '/' . $d[1];
         if ($d[5] === 'pdf') {
@@ -388,12 +382,12 @@ try {
         } else {
             $createMockPng($filePath);
         }
-        $insDoc->execute([$d[0], $d[1], $d[2], $d[3], $d[4]]);
+        db_execute($conn, $sqlDocIns, [$d[0], $d[1], $d[2], $d[3], $d[4]]);
     }
 
     // 10. Populate Pre-Generated Audit Log Entries
     echo "10. Populating Audit Log Trail Entries...\n";
-    $pdo->exec("DELETE FROM AUDIT_LOG");
+    mysqli_query($conn, "DELETE FROM AUDIT_LOG");
     $audits = [
         ['UPDATE', 'DIAGNOSIS',     1,  '{"DiagnosisText":"Upper respiratory infection"}', '{"DiagnosisText":"Acute upper respiratory tract infection with mild bacterial rhinitis"}', '2026-08-10 11:15:00', 1],
         ['UPDATE', 'PRESCRIPTION',  1,  '{"VisitID":1,"PrescribedAt":"2026-08-10 10:00:00"}', '{"VisitID":1,"PrescribedAt":"2026-08-10 10:30:00"}', '2026-08-10 11:20:00', 1],
@@ -405,12 +399,12 @@ try {
         ['UPDATE', 'DIAGNOSIS',     10, '{"DiagnosisText":"Heart disease"}', '{"DiagnosisText":"Hypertensive cardiovascular disease with paroxysmal atrial fibrillation"}', '2026-08-30 11:00:00', 3],
         ['UPDATE', 'MEDICATION',    11, '{"MedicationName":"EpiPen Auto-Injector","StockQuantity":20}', '{"MedicationName":"EpiPen Auto-Injector","StockQuantity":12,"InventoryStatus":"Reorder Needed"}', '2026-09-02 12:00:00', 9],
     ];
-    $insAudit = $pdo->prepare("INSERT INTO AUDIT_LOG (ActionType, TableName, RecordID, OldData, NewData, Timestamp, UserID) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    $sqlAudit = "INSERT INTO AUDIT_LOG (ActionType, TableName, RecordID, OldData, NewData, Timestamp, UserID) VALUES (?, ?, ?, ?, ?, ?, ?)";
     foreach ($audits as $au) {
-        $insAudit->execute($au);
+        db_execute($conn, $sqlAudit, $au);
     }
 
-    $pdo->exec("SET FOREIGN_KEY_CHECKS = 1");
+    mysqli_query($conn, "SET FOREIGN_KEY_CHECKS = 1");
 
     echo "\n========================================================\n";
     echo "DATA POPULATION COMPLETED SUCCESSFULLY!\n";
@@ -418,26 +412,26 @@ try {
 
     // Summary counts
     $summary = [
-        'Users'             => $pdo->query("SELECT COUNT(*) FROM `USER`")->fetchColumn(),
-        'Patients'          => $pdo->query("SELECT COUNT(*) FROM PATIENT")->fetchColumn(),
-        'Doctors'           => $pdo->query("SELECT COUNT(*) FROM DOCTOR")->fetchColumn(),
-        'Staff'             => $pdo->query("SELECT COUNT(*) FROM STAFF")->fetchColumn(),
-        'Guardians'         => $pdo->query("SELECT COUNT(*) FROM GUARDIAN")->fetchColumn(),
-        'Clinic Rooms'      => $pdo->query("SELECT COUNT(*) FROM CLINIC_ROOM")->fetchColumn(),
-        'Medications'       => $pdo->query("SELECT COUNT(*) FROM MEDICATION")->fetchColumn(),
-        'Appointments'      => $pdo->query("SELECT COUNT(*) FROM APPOINTMENT")->fetchColumn(),
-        'Alex Appts'        => $pdo->query("SELECT COUNT(*) FROM APPOINTMENT WHERE PatientID = 4")->fetchColumn(),
-        'Visits'            => $pdo->query("SELECT COUNT(*) FROM VISIT")->fetchColumn(),
-        'Alex Visits'       => $pdo->query("SELECT COUNT(*) FROM VISIT WHERE PatientID = 4")->fetchColumn(),
-        'Diagnoses'         => $pdo->query("SELECT COUNT(*) FROM DIAGNOSIS")->fetchColumn(),
-        'Consultations'     => $pdo->query("SELECT COUNT(*) FROM CONSULTATION")->fetchColumn(),
-        'Lab Tests'         => $pdo->query("SELECT COUNT(*) FROM LAB_TEST")->fetchColumn(),
-        'Prescriptions'     => $pdo->query("SELECT COUNT(*) FROM PRESCRIPTION")->fetchColumn(),
-        'Alex Prescriptions'=> $pdo->query("SELECT COUNT(*) FROM PRESCRIPTION PR JOIN VISIT V ON PR.VisitID = V.VisitID WHERE V.PatientID = 4")->fetchColumn(),
-        'Invoices'          => $pdo->query("SELECT COUNT(*) FROM INVOICE")->fetchColumn(),
-        'Documents'         => $pdo->query("SELECT COUNT(*) FROM PATIENT_DOCUMENT")->fetchColumn(),
-        'Alex Documents'    => $pdo->query("SELECT COUNT(*) FROM PATIENT_DOCUMENT WHERE PatientID = 4")->fetchColumn(),
-        'Audit Entries'     => $pdo->query("SELECT COUNT(*) FROM AUDIT_LOG")->fetchColumn(),
+        'Users'             => db_fetch_column($conn, "SELECT COUNT(*) FROM `USER`"),
+        'Patients'          => db_fetch_column($conn, "SELECT COUNT(*) FROM PATIENT"),
+        'Doctors'           => db_fetch_column($conn, "SELECT COUNT(*) FROM DOCTOR"),
+        'Staff'             => db_fetch_column($conn, "SELECT COUNT(*) FROM STAFF"),
+        'Guardians'         => db_fetch_column($conn, "SELECT COUNT(*) FROM GUARDIAN"),
+        'Clinic Rooms'      => db_fetch_column($conn, "SELECT COUNT(*) FROM CLINIC_ROOM"),
+        'Medications'       => db_fetch_column($conn, "SELECT COUNT(*) FROM MEDICATION"),
+        'Appointments'      => db_fetch_column($conn, "SELECT COUNT(*) FROM APPOINTMENT"),
+        'Alex Appts'        => db_fetch_column($conn, "SELECT COUNT(*) FROM APPOINTMENT WHERE PatientID = 4"),
+        'Visits'            => db_fetch_column($conn, "SELECT COUNT(*) FROM VISIT"),
+        'Alex Visits'       => db_fetch_column($conn, "SELECT COUNT(*) FROM VISIT WHERE PatientID = 4"),
+        'Diagnoses'         => db_fetch_column($conn, "SELECT COUNT(*) FROM DIAGNOSIS"),
+        'Consultations'     => db_fetch_column($conn, "SELECT COUNT(*) FROM CONSULTATION"),
+        'Lab Tests'         => db_fetch_column($conn, "SELECT COUNT(*) FROM LAB_TEST"),
+        'Prescriptions'     => db_fetch_column($conn, "SELECT COUNT(*) FROM PRESCRIPTION"),
+        'Alex Prescriptions'=> db_fetch_column($conn, "SELECT COUNT(*) FROM PRESCRIPTION PR JOIN VISIT V ON PR.VisitID = V.VisitID WHERE V.PatientID = 4"),
+        'Invoices'          => db_fetch_column($conn, "SELECT COUNT(*) FROM INVOICE"),
+        'Documents'         => db_fetch_column($conn, "SELECT COUNT(*) FROM PATIENT_DOCUMENT"),
+        'Alex Documents'    => db_fetch_column($conn, "SELECT COUNT(*) FROM PATIENT_DOCUMENT WHERE PatientID = 4"),
+        'Audit Entries'     => db_fetch_column($conn, "SELECT COUNT(*) FROM AUDIT_LOG"),
     ];
 
     foreach ($summary as $k => $v) {
@@ -446,6 +440,6 @@ try {
     echo "========================================================\n";
 
 } catch (Exception $e) {
-    $pdo->exec("SET FOREIGN_KEY_CHECKS = 1");
+    mysqli_query($conn, "SET FOREIGN_KEY_CHECKS = 1");
     echo "ERROR: " . $e->getMessage() . "\n";
 }

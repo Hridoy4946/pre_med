@@ -14,12 +14,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_appointment_id
     require_csrf();
     $cancelId = filter_input(INPUT_POST, 'cancel_appointment_id', FILTER_VALIDATE_INT);
     if ($cancelId) {
-        $cancelStmt = $pdo->prepare("
+        db_execute($conn, "
             UPDATE APPOINTMENT SET Status = 'Cancelled'
             WHERE AppointmentID = ? AND PatientID = ? AND AppointmentDate >= NOW() AND Status != 'Cancelled'
-        ");
-        $cancelStmt->execute([$cancelId, $_SESSION['user_id']]);
-        $msg = $cancelStmt->rowCount() ? '✓ Appointment cancelled successfully.' : 'Could not cancel that appointment.';
+        ", [$cancelId, $_SESSION['user_id']]);
+        $msg = db_affected_rows($conn) ? '✓ Appointment cancelled successfully.' : 'Could not cancel that appointment.';
     }
 }
 
@@ -36,41 +35,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['doctor_id'])) {
         $error = "Please choose a valid future date/time, doctor, room, and duration.";
     } else {
         // Conflict resolution: check doctor AND room overlap
-        $checkStmt = $pdo->prepare("
+        $checkConflict = db_fetch_one($conn, "
             SELECT AppointmentID FROM APPOINTMENT
             WHERE (DoctorID = ? OR RoomID = ?)
               AND Status NOT IN ('Cancelled')
               AND AppointmentDate < DATE_ADD(?, INTERVAL ? MINUTE)
               AND DATE_ADD(AppointmentDate, INTERVAL DurationMinutes MINUTE) > ?
             LIMIT 1
-        ");
-        $checkStmt->execute([$doctorId, $roomId, $apptDate, $duration, $apptDate]);
-        if ($checkStmt->fetch()) {
+        ", [$doctorId, $roomId, $apptDate, $duration, $apptDate]);
+        if ($checkConflict) {
             $error = "⚠ Conflict detected: that doctor or room is already booked during this time slot. Please choose a different time.";
         } else {
-            $pdo->beginTransaction();
+            db_begin_transaction($conn);
             try {
-                $pdo->prepare("INSERT INTO APPOINTMENT (AppointmentDate, DurationMinutes, Status, PatientID, DoctorID, RoomID) VALUES (?, ?, 'Scheduled', ?, ?, ?)")
-                    ->execute([$apptDate, $duration, $patientId, $doctorId, $roomId]);
+                db_execute($conn, "INSERT INTO APPOINTMENT (AppointmentDate, DurationMinutes, Status, PatientID, DoctorID, RoomID) VALUES (?, ?, 'Scheduled', ?, ?, ?)", [$apptDate, $duration, $patientId, $doctorId, $roomId]);
                 // Assign doctor if patient has none
-                $pdo->prepare('UPDATE PATIENT SET AssignedDoctorID = ? WHERE UserID = ? AND AssignedDoctorID IS NULL')
-                    ->execute([$doctorId, $patientId]);
-                $pdo->commit();
+                db_execute($conn, "UPDATE PATIENT SET AssignedDoctorID = ? WHERE UserID = ? AND AssignedDoctorID IS NULL", [$doctorId, $patientId]);
+                db_commit($conn);
                 $msg = "✓ Appointment booked for " . date('D, M j Y \a\t g:i A', strtotime($apptDate)) . " — Status: Scheduled.";
             } catch (Throwable $e) {
-                $pdo->rollBack();
+                db_rollback($conn);
                 $error = "The appointment could not be scheduled. Please try a different slot.";
             }
         }
     }
 }
 
-$doctors = $pdo->query("SELECT D.UserID, U.Name, Dep.DeptName FROM DOCTOR D JOIN `USER` U ON D.UserID = U.UserID JOIN DEPARTMENT Dep ON D.DeptID = Dep.DeptID ORDER BY U.Name")->fetchAll();
-$rooms   = $pdo->query("SELECT * FROM CLINIC_ROOM ORDER BY RoomNumber")->fetchAll();
+$doctors = db_fetch_all($conn, "SELECT D.UserID, U.Name, Dep.DeptName FROM DOCTOR D JOIN `USER` U ON D.UserID = U.UserID JOIN DEPARTMENT Dep ON D.DeptID = Dep.DeptID ORDER BY U.Name");
+$rooms   = db_fetch_all($conn, "SELECT * FROM CLINIC_ROOM ORDER BY RoomNumber");
 $minDate = date('Y-m-d\TH:i', strtotime('+30 minutes'));
 
 // Fetch this patient's appointments to show in the status panel
-$myApptStmt = $pdo->prepare("
+$myAppointments = db_fetch_all($conn, "
     SELECT A.AppointmentID, A.AppointmentDate, A.DurationMinutes, A.Status,
            U.Name AS DoctorName, Dep.DeptName, R.RoomNumber
     FROM APPOINTMENT A
@@ -81,12 +77,10 @@ $myApptStmt = $pdo->prepare("
     WHERE A.PatientID = ?
     ORDER BY A.AppointmentDate DESC
     LIMIT 10
-");
-$myApptStmt->execute([$_SESSION['user_id']]);
-$myAppointments = $myApptStmt->fetchAll();
+", [$_SESSION['user_id']]);
 
 // Today's schedule for ALL doctors (so we can display per selected doctor)
-$todayDocSchedStmt = $pdo->query("
+$allDocTodayRaw = db_fetch_all($conn, "
     SELECT A.DoctorID, A.AppointmentDate, A.DurationMinutes, A.Status,
            PU.Name AS PatientName, P.PatientCode, R.RoomNumber
     FROM APPOINTMENT A
@@ -97,7 +91,6 @@ $todayDocSchedStmt = $pdo->query("
       AND A.Status != 'Cancelled'
     ORDER BY A.DoctorID, A.AppointmentDate ASC
 ");
-$allDocTodayRaw = $todayDocSchedStmt->fetchAll();
 // Group by DoctorID for JS consumption
 $docTodayMap = [];
 foreach ($allDocTodayRaw as $row) {

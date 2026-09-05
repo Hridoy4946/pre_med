@@ -16,9 +16,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['appt_id'], $_POST['ne
     $allowedStatuses = ['Scheduled', 'Confirmed', 'Completed', 'Cancelled'];
 
     if ($apptId && in_array($newStatus, $allowedStatuses, true)) {
-        $update = $pdo->prepare('UPDATE APPOINTMENT SET Status = ? WHERE AppointmentID = ?');
-        $update->execute([$newStatus, $apptId]);
-        $msg = $update->rowCount() ? 'Appointment status updated to ' . htmlspecialchars($newStatus) . '.' : 'No status change was made.';
+        db_execute($conn, 'UPDATE APPOINTMENT SET Status = ? WHERE AppointmentID = ?', [$newStatus, $apptId]);
+        $msg = db_affected_rows($conn) ? 'Appointment status updated to ' . htmlspecialchars($newStatus) . '.' : 'No status change was made.';
     } else {
         $error = 'Choose a valid appointment status.';
     }
@@ -36,15 +35,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book_for_patient'])) 
         || strtotime($appointmentDate) === false || strtotime($appointmentDate) < time()) {
         $error = 'Please choose a patient, doctor, room, future date/time, and valid duration.';
     } else {
-        $conflict = $pdo->prepare("\n            SELECT AppointmentID FROM APPOINTMENT\n            WHERE (DoctorID = ? OR RoomID = ?)\n              AND Status NOT IN ('Cancelled')\n              AND AppointmentDate < DATE_ADD(?, INTERVAL ? MINUTE)\n              AND DATE_ADD(AppointmentDate, INTERVAL DurationMinutes MINUTE) > ?\n            LIMIT 1\n        ");
-        $conflict->execute([$doctorId, $roomId, $appointmentDate, $duration, $appointmentDate]);
+        $conflict = db_fetch_one($conn, "
+            SELECT AppointmentID FROM APPOINTMENT
+            WHERE (DoctorID = ? OR RoomID = ?)
+              AND Status NOT IN ('Cancelled')
+              AND AppointmentDate < DATE_ADD(?, INTERVAL ? MINUTE)
+              AND DATE_ADD(AppointmentDate, INTERVAL DurationMinutes MINUTE) > ?
+            LIMIT 1
+        ", [$doctorId, $roomId, $appointmentDate, $duration, $appointmentDate]);
 
-        if ($conflict->fetch()) {
+        if ($conflict) {
             $error = 'Conflict detected: that doctor or room is already booked during this time.';
         } else {
             try {
-                $pdo->prepare("INSERT INTO APPOINTMENT (AppointmentDate, DurationMinutes, Status, PatientID, DoctorID, RoomID) VALUES (?, ?, 'Confirmed', ?, ?, ?)")
-                    ->execute([$appointmentDate, $duration, $patientId, $doctorId, $roomId]);
+                db_execute($conn, "INSERT INTO APPOINTMENT (AppointmentDate, DurationMinutes, Status, PatientID, DoctorID, RoomID) VALUES (?, ?, 'Confirmed', ?, ?, ?)", [$appointmentDate, $duration, $patientId, $doctorId, $roomId]);
                 $msg = 'Appointment booked and marked Confirmed for ' . date('D, M j Y \\a\\t g:i A', strtotime($appointmentDate)) . '.';
             } catch (Throwable $exception) {
                 $error = 'The appointment could not be booked. Please choose another time.';
@@ -53,10 +57,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book_for_patient'])) 
     }
 }
 
-$patients = $pdo->query("SELECT P.UserID, U.Name, P.PatientCode FROM PATIENT P JOIN `USER` U ON U.UserID = P.UserID ORDER BY U.Name")->fetchAll();
-$doctors = $pdo->query("SELECT D.UserID, U.Name, Dep.DeptName FROM DOCTOR D JOIN `USER` U ON D.UserID = U.UserID JOIN DEPARTMENT Dep ON D.DeptID = Dep.DeptID ORDER BY U.Name")->fetchAll();
-$rooms = $pdo->query('SELECT RoomID, RoomNumber FROM CLINIC_ROOM ORDER BY RoomNumber')->fetchAll();
-$appointments = $pdo->query("\n    SELECT A.AppointmentID, A.AppointmentDate, A.DurationMinutes, A.Status,\n           PatientUser.Name AS PatientName, DoctorUser.Name AS DoctorName, R.RoomNumber\n    FROM APPOINTMENT A\n    JOIN `USER` PatientUser ON PatientUser.UserID = A.PatientID\n    JOIN `USER` DoctorUser ON DoctorUser.UserID = A.DoctorID\n    JOIN CLINIC_ROOM R ON R.RoomID = A.RoomID\n    WHERE A.AppointmentDate >= DATE_SUB(NOW(), INTERVAL 30 DAY)\n    ORDER BY A.AppointmentDate >= NOW() DESC, A.AppointmentDate ASC\n    LIMIT 40\n")->fetchAll();
+$patients = db_fetch_all($conn, "SELECT P.UserID, U.Name, P.PatientCode FROM PATIENT P JOIN `USER` U ON U.UserID = P.UserID ORDER BY U.Name");
+$doctors = db_fetch_all($conn, "SELECT D.UserID, U.Name, Dep.DeptName FROM DOCTOR D JOIN `USER` U ON D.UserID = U.UserID JOIN DEPARTMENT Dep ON D.DeptID = Dep.DeptID ORDER BY U.Name");
+$rooms = db_fetch_all($conn, 'SELECT RoomID, RoomNumber FROM CLINIC_ROOM ORDER BY RoomNumber');
+$appointments = db_fetch_all($conn, "
+    SELECT A.AppointmentID, A.AppointmentDate, A.DurationMinutes, A.Status,
+           PatientUser.Name AS PatientName, DoctorUser.Name AS DoctorName, R.RoomNumber
+    FROM APPOINTMENT A
+    JOIN `USER` PatientUser ON PatientUser.UserID = A.PatientID
+    JOIN `USER` DoctorUser ON DoctorUser.UserID = A.DoctorID
+    JOIN CLINIC_ROOM R ON R.RoomID = A.RoomID
+    WHERE A.AppointmentDate >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+    ORDER BY A.AppointmentDate >= NOW() DESC, A.AppointmentDate ASC
+    LIMIT 40
+");
 $minDate = date('Y-m-d\\TH:i', strtotime('+30 minutes'));
 $statusStyles = [
     'Scheduled' => ['color' => 'var(--teal)', 'background' => 'rgba(15,200,228,.12)'],
@@ -66,7 +80,7 @@ $statusStyles = [
 ];
 
 // Today's schedule grouped by doctor (for the summary box)
-$todayStmt = $pdo->query("
+$todayAll = db_fetch_all($conn, "
     SELECT A.AppointmentDate, A.DurationMinutes, A.Status,
            DoctorUser.Name AS DoctorName, A.DoctorID,
            PatientUser.Name AS PatientName, P.PatientCode, R.RoomNumber
@@ -79,7 +93,6 @@ $todayStmt = $pdo->query("
       AND A.Status != 'Cancelled'
     ORDER BY A.AppointmentDate ASC
 ");
-$todayAll = $todayStmt->fetchAll();
 // Group by DoctorName
 $todayByDoctor = [];
 foreach ($todayAll as $row) {

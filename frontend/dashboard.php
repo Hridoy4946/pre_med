@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit(); }
@@ -19,18 +19,12 @@ if (isset($_POST['log_symptom']) && $isPatient) {
     if ($score === false || $score < 1 || $score > 10) {
         $error = "Severity must be a whole number from 1 to 10.";
     } else {
-        $stmt = $pdo->prepare("INSERT INTO SYMPTOM_LOG (PatientID, SeverityScore) VALUES (?, ?)");
-        $stmt->execute([$userId, $score]);
+        db_execute($conn, "INSERT INTO SYMPTOM_LOG (PatientID, SeverityScore) VALUES (?, ?)", [$userId, $score]);
 
-        $avgStmt = $pdo->prepare("SELECT AVG(SeverityScore) FROM SYMPTOM_LOG WHERE PatientID = ? AND LoggedAt >= DATE_SUB(NOW(), INTERVAL 3 DAY)");
-        $avgStmt->execute([$userId]);
-        $average = (float) $avgStmt->fetchColumn();
-        $riskStmt = $pdo->prepare("SELECT CASE WHEN DateOfBirth IS NOT NULL AND TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) >= 60 AND (SELECT COUNT(*) FROM SYMPTOM_LOG WHERE PatientID = ? AND SeverityScore > 8) >= 2 THEN 'High' WHEN (SELECT COUNT(*) FROM SYMPTOM_LOG WHERE PatientID = ? AND SeverityScore >= 7) >= 2 THEN 'Medium' ELSE 'Low' END FROM PATIENT WHERE UserID = ?");
-        $riskStmt->execute([$userId, $userId, $userId]);
-        $risk   = $riskStmt->fetchColumn() ?: 'Low';
+        $average = (float)db_fetch_column($conn, "SELECT AVG(SeverityScore) FROM SYMPTOM_LOG WHERE PatientID = ? AND LoggedAt >= DATE_SUB(NOW(), INTERVAL 3 DAY)", [$userId]);
+        $risk = db_fetch_column($conn, "SELECT CASE WHEN DateOfBirth IS NOT NULL AND TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) >= 60 AND (SELECT COUNT(*) FROM SYMPTOM_LOG WHERE PatientID = ? AND SeverityScore > 8) >= 2 THEN 'High' WHEN (SELECT COUNT(*) FROM SYMPTOM_LOG WHERE PatientID = ? AND SeverityScore >= 7) >= 2 THEN 'Medium' ELSE 'Low' END FROM PATIENT WHERE UserID = ?", [$userId, $userId, $userId]) ?: 'Low';
         $status = $average >= 7 ? 'Requires Attention' : 'Stable';
-        $pdo->prepare("UPDATE PATIENT SET ProfileStatus = ?, RiskLevel = ? WHERE UserID = ?")
-            ->execute([$status, $risk, $userId]);
+        db_execute($conn, "UPDATE PATIENT SET ProfileStatus = ?, RiskLevel = ? WHERE UserID = ?", [$status, $risk, $userId]);
         $msg = $status === 'Requires Attention'
             ? "Logged. Your 3-day average is " . number_format($average, 2) . ". Please contact your care team."
             : "Symptom logged. Your 3-day average is " . number_format($average, 2) . ".";
@@ -41,10 +35,10 @@ $patient      = null;
 $dailySymptoms = [];
 $dailyAverage  = null;
 $peakSeverity  = null;
-$symptomsByDate = []; // NEW: detailed symptom names per day
+$symptomsByDate = []; // detailed symptom names per day
 
 if ($isPatient) {
-    $stmt = $pdo->prepare("
+    $patient = db_fetch_one($conn, "
         SELECT P.ProfileStatus, P.RiskLevel, P.PatientCode,
                DU.Name AS DoctorName, Dep.DeptName
         FROM PATIENT P
@@ -52,12 +46,10 @@ if ($isPatient) {
         LEFT JOIN `USER` DU ON DU.UserID = D.UserID
         LEFT JOIN DEPARTMENT Dep ON Dep.DeptID = D.DeptID
         WHERE P.UserID = ?
-    ");
-    $stmt->execute([$userId]);
-    $patient = $stmt->fetch();
+    ", [$userId]);
 
     // Per-day aggregate for chart line
-    $trendStmt = $pdo->prepare("
+    $dailySymptoms = db_fetch_all($conn, "
         SELECT DATE(LoggedAt) AS LogDate,
                ROUND(AVG(SeverityScore), 1) AS AverageScore,
                MAX(SeverityScore) AS PeakScore,
@@ -66,12 +58,10 @@ if ($isPatient) {
         WHERE PatientID = ? AND LoggedAt >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
         GROUP BY DATE(LoggedAt)
         ORDER BY LogDate
-    ");
-    $trendStmt->execute([$userId]);
-    $dailySymptoms = $trendStmt->fetchAll();
+    ", [$userId]);
 
     // Per-day symptom names for the hover tooltip
-    $detailStmt = $pdo->prepare("
+    $detailRows = db_fetch_all($conn, "
         SELECT DATE(LoggedAt) AS LogDate,
                GROUP_CONCAT(
                    CONCAT(COALESCE(SymptomName,'General'), ' (', SeverityScore, ')')
@@ -83,9 +73,8 @@ if ($isPatient) {
         FROM SYMPTOM_LOG
         WHERE PatientID = ? AND LoggedAt >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
         GROUP BY DATE(LoggedAt)
-    ");
-    $detailStmt->execute([$userId]);
-    foreach ($detailStmt->fetchAll() as $row) {
+    ", [$userId]);
+    foreach ($detailRows as $row) {
         $symptomsByDate[$row['LogDate']] = $row;
     }
 
@@ -96,38 +85,38 @@ if ($isPatient) {
 }
 
 if ($isStaff) {
-    $totalRooms = (int)$pdo->query("SELECT COUNT(*) FROM CLINIC_ROOM")->fetchColumn();
-    $todayScheduledLabs = (int)$pdo->query("SELECT COUNT(*) FROM LAB_TEST LT JOIN VISIT V ON LT.VisitID = V.VisitID WHERE DATE(V.AdmissionDate) = CURDATE()")->fetchColumn();
+    $totalRooms = (int)db_fetch_column($conn, "SELECT COUNT(*) FROM CLINIC_ROOM");
+    $todayScheduledLabs = (int)db_fetch_column($conn, "SELECT COUNT(*) FROM LAB_TEST LT JOIN VISIT V ON LT.VisitID = V.VisitID WHERE DATE(V.AdmissionDate) = CURDATE()");
     $labCapacityToday = max(24, $totalRooms * 8);
 
-    $occupiedRooms = (int)$pdo->query("
+    $occupiedRooms = (int)db_fetch_column($conn, "
         SELECT COUNT(DISTINCT RoomID) FROM APPOINTMENT
         WHERE Status IN ('Scheduled', 'Confirmed')
           AND AppointmentDate <= NOW()
           AND DATE_ADD(AppointmentDate, INTERVAL DurationMinutes MINUTE) >= NOW()
-    ")->fetchColumn();
+    ");
     $freeRoomsCount = max(0, $totalRooms - $occupiedRooms);
 
-    $staffPresentCount = (int)$pdo->query("SELECT COUNT(*) FROM STAFF")->fetchColumn();
+    $staffPresentCount = (int)db_fetch_column($conn, "SELECT COUNT(*) FROM STAFF");
 
-    $docScheduledToday = (int)$pdo->query("
+    $docScheduledToday = (int)db_fetch_column($conn, "
         SELECT COUNT(DISTINCT DoctorID) FROM APPOINTMENT 
         WHERE DATE(AppointmentDate) = CURDATE() AND Status != 'Cancelled'
-    ")->fetchColumn();
-    $totalDoctorsInClinic = (int)$pdo->query("SELECT COUNT(*) FROM DOCTOR")->fetchColumn();
+    ");
+    $totalDoctorsInClinic = (int)db_fetch_column($conn, "SELECT COUNT(*) FROM DOCTOR");
     $doctorsPresentCount = max($docScheduledToday, min(3, $totalDoctorsInClinic));
 
-    $reportsToDeliverCount = (int)$pdo->query("
+    $reportsToDeliverCount = (int)db_fetch_column($conn, "
         SELECT (
             (SELECT COUNT(*) FROM LAB_TEST WHERE Result IS NOT NULL AND Result != '') +
             (SELECT COUNT(*) FROM DIAGNOSIS WHERE CreatedAt >= DATE_SUB(NOW(), INTERVAL 7 DAY))
         )
-    ")->fetchColumn();
+    ");
 
-    $productsToReceiveCount = (int)$pdo->query("
+    $productsToReceiveCount = (int)db_fetch_column($conn, "
         SELECT COUNT(*) FROM MEDICATION 
         WHERE InventoryStatus = 'Reorder Needed' OR StockQuantity < 50
-    ")->fetchColumn();
+    ");
     if ($productsToReceiveCount === 0) {
         $productsToReceiveCount = 2;
     }

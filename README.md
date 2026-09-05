@@ -6,7 +6,7 @@ A web-based healthcare management platform designed for patient symptom monitori
 
 ## Tech Stack
 
-- **Backend:** PHP 8+ (PDO, Session authentication, CSRF protection)
+- **Backend:** PHP 8+ (Procedural MySQLi, Session authentication, CSRF protection, Prepared Statements)
 - **Database:** MariaDB / MySQL
 - **Frontend:** HTML5, CSS3, JavaScript
 - **Server:** Apache (XAMPP) or PHP built-in web server
@@ -58,7 +58,7 @@ Get-Content .\resources\sql\demo_data.sql | & 'C:\xampp\mysql\bin\mysql.exe' -u 
 ```
 pre_med/
 ├── backend/                  # Server-side business logic, database, actions & APIs
-│   ├── db.php                # PDO connection, CSRF tokens & security utilities
+│   ├── db.php                # Procedural MySQLi connection, helper functions, CSRF tokens & security utilities
 │   ├── notifications.php     # Notification query engine
 │   ├── logout.php            # Session teardown handler
 │   ├── download_document.php # Document access control & streamer

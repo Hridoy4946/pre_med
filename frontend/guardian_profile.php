@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Guardian') {
@@ -6,9 +6,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Guardian') {
     exit();
 }
 
-$guardianStmt = $pdo->prepare("SELECT G.PatientID, G.GuardianName, G.Phone, U.Name AS PatientName, P.ProfileStatus, P.RiskLevel, P.BloodGroup, P.Gender, P.DateOfBirth, DUser.Name AS DoctorName FROM GUARDIAN G JOIN PATIENT P ON P.UserID = G.PatientID JOIN `USER` U ON U.UserID = P.UserID LEFT JOIN `USER` DUser ON DUser.UserID = P.AssignedDoctorID WHERE G.GuardianUserID = ? LIMIT 1");
-$guardianStmt->execute([$_SESSION['user_id']]);
-$profile = $guardianStmt->fetch();
+$profile = db_fetch_one($conn, "SELECT G.PatientID, G.GuardianName, G.Phone, U.Name AS PatientName, P.ProfileStatus, P.RiskLevel, P.BloodGroup, P.Gender, P.DateOfBirth, DUser.Name AS DoctorName FROM GUARDIAN G JOIN PATIENT P ON P.UserID = G.PatientID JOIN `USER` U ON U.UserID = P.UserID LEFT JOIN `USER` DUser ON DUser.UserID = P.AssignedDoctorID WHERE G.GuardianUserID = ? LIMIT 1", [$_SESSION['user_id']]);
 
 if (!$profile) {
     http_response_code(404);
@@ -17,13 +15,9 @@ if (!$profile) {
 $appointments = [];
 $symptoms = [];
 if ($profile) {
-    $appointmentsStmt = $pdo->prepare("SELECT A.AppointmentDate, A.DurationMinutes, U.Name AS DoctorName, R.RoomNumber FROM APPOINTMENT A JOIN `USER` U ON U.UserID = A.DoctorID JOIN CLINIC_ROOM R ON R.RoomID = A.RoomID WHERE A.PatientID = ? AND A.AppointmentDate >= NOW() ORDER BY A.AppointmentDate ASC LIMIT 8");
-    $appointmentsStmt->execute([(int) $profile['PatientID']]);
-    $appointments = $appointmentsStmt->fetchAll();
+    $appointments = db_fetch_all($conn, "SELECT A.AppointmentDate, A.DurationMinutes, U.Name AS DoctorName, R.RoomNumber FROM APPOINTMENT A JOIN `USER` U ON U.UserID = A.DoctorID JOIN CLINIC_ROOM R ON R.RoomID = A.RoomID WHERE A.PatientID = ? AND A.AppointmentDate >= NOW() ORDER BY A.AppointmentDate ASC LIMIT 8", [(int) $profile['PatientID']]);
 
-    $symptomStmt = $pdo->prepare("SELECT SymptomName, SeverityScore, LoggedAt FROM SYMPTOM_LOG WHERE PatientID = ? ORDER BY LoggedAt DESC LIMIT 12");
-    $symptomStmt->execute([(int) $profile['PatientID']]);
-    $symptoms = $symptomStmt->fetchAll();
+    $symptoms = db_fetch_all($conn, "SELECT SymptomName, SeverityScore, LoggedAt FROM SYMPTOM_LOG WHERE PatientID = ? ORDER BY LoggedAt DESC LIMIT 12", [(int) $profile['PatientID']]);
 }
 ?>
 <!DOCTYPE html>

@@ -3,11 +3,9 @@ require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email         = trim($_POST['email'] ?? '');
-    $password      = $_POST['password'] ?? '';
-    $stmt          = $pdo->prepare("SELECT * FROM `USER` WHERE Email = ?");
-    $stmt->execute([$email]);
-    $user = $stmt->fetch();
+    $email    = trim($_POST['email'] ?? '');
+    $password = $_POST['password'] ?? '';
+    $user     = db_fetch_one($conn, "SELECT * FROM `USER` WHERE Email = ?", [$email]);
 
     if ($user && password_verify($password, $user['Password'])) {
         session_regenerate_id(true);
@@ -16,22 +14,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Resolve role by checking each role table
         $resolvedRole = 'Patient';
-        $docCheck = $pdo->prepare("SELECT 1 FROM DOCTOR WHERE UserID = ? LIMIT 1");
-        $docCheck->execute([$user['UserID']]);
-        if ($docCheck->fetchColumn()) {
+        if (db_fetch_column($conn, "SELECT 1 FROM DOCTOR WHERE UserID = ? LIMIT 1", [$user['UserID']])) {
             $resolvedRole = 'Doctor';
-        } else {
-            $staffCheck = $pdo->prepare("SELECT 1 FROM STAFF WHERE UserID = ? LIMIT 1");
-            $staffCheck->execute([$user['UserID']]);
-            if ($staffCheck->fetchColumn()) {
-                $resolvedRole = 'Staff';
-            } else {
-                $guardianCheck = $pdo->prepare("SELECT 1 FROM GUARDIAN WHERE GuardianUserID = ? LIMIT 1");
-                $guardianCheck->execute([$user['UserID']]);
-                if ($guardianCheck->fetchColumn()) {
-                    $resolvedRole = 'Guardian';
-                }
-            }
+        } elseif (db_fetch_column($conn, "SELECT 1 FROM STAFF WHERE UserID = ? LIMIT 1", [$user['UserID']])) {
+            $resolvedRole = 'Staff';
+        } elseif (db_fetch_column($conn, "SELECT 1 FROM GUARDIAN WHERE GuardianUserID = ? LIMIT 1", [$user['UserID']])) {
+            $resolvedRole = 'Guardian';
         }
         $_SESSION['role'] = $resolvedRole;
         header("Location: dashboard.php");

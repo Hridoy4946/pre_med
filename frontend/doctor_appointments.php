@@ -15,16 +15,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['appt_id'], $_POST['ne
     $newStatus = $_POST['new_status'];
     $allowed   = ['Scheduled', 'Confirmed', 'Completed', 'Cancelled'];
     if ($apptId && in_array($newStatus, $allowed, true)) {
-        $upd = $pdo->prepare("
+        db_execute($conn, "
             UPDATE APPOINTMENT SET Status = ?
             WHERE AppointmentID = ? AND DoctorID = ?
-        ");
-        $upd->execute([$newStatus, $apptId, $doctorId]);
-        $updateMsg = $upd->rowCount() ? '✓ Status updated to ' . htmlspecialchars($newStatus) . '.' : 'No change made.';
+        ", [$newStatus, $apptId, $doctorId]);
+        $updateMsg = db_affected_rows($conn) ? '✓ Status updated to ' . htmlspecialchars($newStatus) . '.' : 'No change made.';
     }
 }
 
-$upcomingStmt = $pdo->prepare("
+$upcomingSql = "
     SELECT A.AppointmentID, A.AppointmentDate, A.DurationMinutes, A.Status,
            U.Name AS PatientName, P.PatientCode, P.RiskLevel, P.ProfileStatus,
            R.RoomNumber
@@ -34,11 +33,10 @@ $upcomingStmt = $pdo->prepare("
     JOIN CLINIC_ROOM R ON A.RoomID = R.RoomID
     WHERE A.DoctorID = ? AND A.AppointmentDate >= NOW() AND A.Status != 'Cancelled'
     ORDER BY A.AppointmentDate ASC
-");
-$upcomingStmt->execute([$doctorId]);
-$upcoming = $upcomingStmt->fetchAll();
+";
+$upcoming = db_fetch_all($conn, $upcomingSql, [$doctorId]);
 
-$pastStmt = $pdo->prepare("
+$pastSql = "
     SELECT A.AppointmentID, A.AppointmentDate, A.DurationMinutes, A.Status,
            U.Name AS PatientName, P.PatientCode, P.RiskLevel,
            R.RoomNumber
@@ -49,9 +47,8 @@ $pastStmt = $pdo->prepare("
     WHERE A.DoctorID = ? AND (A.AppointmentDate < NOW() OR A.Status = 'Cancelled')
     ORDER BY A.AppointmentDate DESC
     LIMIT 30
-");
-$pastStmt->execute([$doctorId]);
-$past = $pastStmt->fetchAll();
+";
+$past = db_fetch_all($conn, $pastSql, [$doctorId]);
 
 $countUpcoming = count($upcoming);
 $countPast     = count($past);
@@ -70,28 +67,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sched_patient_id'])) 
         $schedError = 'Please fill in all fields and choose a future date/time.';
     } else {
         // Verify this is one of the doctor's assigned patients
-        $patCheck = $pdo->prepare("SELECT 1 FROM PATIENT WHERE UserID = ? AND AssignedDoctorID = ?");
-        $patCheck->execute([$schedPatientId, $doctorId]);
-        if (!$patCheck->fetch()) {
+        if (!db_fetch_column($conn, "SELECT 1 FROM PATIENT WHERE UserID = ? AND AssignedDoctorID = ?", [$schedPatientId, $doctorId])) {
             $schedError = 'You can only schedule appointments for your assigned patients.';
         } else {
-            $conflict = $pdo->prepare("
+            $conflict = db_fetch_one($conn, "
                 SELECT AppointmentID FROM APPOINTMENT
                 WHERE (DoctorID = ? OR RoomID = ?)
                   AND Status NOT IN ('Cancelled')
                   AND AppointmentDate < DATE_ADD(?, INTERVAL ? MINUTE)
                   AND DATE_ADD(AppointmentDate, INTERVAL DurationMinutes MINUTE) > ?
                 LIMIT 1
-            ");
-            $conflict->execute([$doctorId, $schedRoomId, $schedDate, $schedDuration, $schedDate]);
-            if ($conflict->fetch()) {
+            ", [$doctorId, $schedRoomId, $schedDate, $schedDuration, $schedDate]);
+            if ($conflict) {
                 $schedError = '⚠ Conflict: that room or your schedule is already booked for this time slot.';
             } else {
-                $pdo->prepare("INSERT INTO APPOINTMENT (AppointmentDate, DurationMinutes, Status, PatientID, DoctorID, RoomID) VALUES (?, ?, 'Confirmed', ?, ?, ?)")
-                    ->execute([$schedDate, $schedDuration, $schedPatientId, $doctorId, $schedRoomId]);
+                db_execute($conn, "INSERT INTO APPOINTMENT (AppointmentDate, DurationMinutes, Status, PatientID, DoctorID, RoomID) VALUES (?, ?, 'Confirmed', ?, ?, ?)", [$schedDate, $schedDuration, $schedPatientId, $doctorId, $schedRoomId]);
                 // Re-fetch upcoming
-                $upcomingStmt->execute([$doctorId]);
-                $upcoming = $upcomingStmt->fetchAll();
+                $upcoming = db_fetch_all($conn, $upcomingSql, [$doctorId]);
                 $countUpcoming = count($upcoming);
                 $schedMsg = '✓ Appointment scheduled and set to Confirmed for ' . date('D, M j Y \a\t g:i A', strtotime($schedDate)) . '.';
             }
@@ -100,19 +92,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sched_patient_id'])) 
 }
 
 // Fetch doctor's assigned patients for the scheduling dropdown
-$assignedPatients = $pdo->prepare("
+$myPatients = db_fetch_all($conn, "
     SELECT P.UserID, U.Name, P.PatientCode, P.RiskLevel
     FROM PATIENT P JOIN `USER` U ON U.UserID = P.UserID
     WHERE P.AssignedDoctorID = ? ORDER BY U.Name
-");
-$assignedPatients->execute([$doctorId]);
-$myPatients = $assignedPatients->fetchAll();
+", [$doctorId]);
 
-$rooms = $pdo->query("SELECT * FROM CLINIC_ROOM ORDER BY RoomNumber")->fetchAll();
+$rooms = db_fetch_all($conn, "SELECT * FROM CLINIC_ROOM ORDER BY RoomNumber");
 $minDate = date('Y-m-d\TH:i', strtotime('+30 minutes'));
 
 // Today's schedule for the doctor
-$todaySchedStmt = $pdo->prepare("
+$todaySchedule = db_fetch_all($conn, "
     SELECT A.AppointmentDate, A.DurationMinutes, A.Status,
            U.Name AS PatientName, P.PatientCode, P.RiskLevel, R.RoomNumber
     FROM APPOINTMENT A
@@ -123,9 +113,7 @@ $todaySchedStmt = $pdo->prepare("
       AND DATE(A.AppointmentDate) = CURDATE()
       AND A.Status != 'Cancelled'
     ORDER BY A.AppointmentDate ASC
-");
-$todaySchedStmt->execute([$doctorId]);
-$todaySchedule = $todaySchedStmt->fetchAll();
+", [$doctorId]);
 ?>
 <!DOCTYPE html>
 <html lang="en">

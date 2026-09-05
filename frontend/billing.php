@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['Doctor', 'Staff'], true)) {
@@ -19,7 +19,7 @@ $generatedMessage = '';
 $billingError = '';
 
 if ($isStaff) {
-    $visitsStmt = $pdo->query("
+    $visits = db_fetch_all($conn, "
         SELECT V.VisitID, V.AdmissionDate, U.Name AS PatientName, DocU.Name AS DoctorName
         FROM VISIT V
         JOIN PATIENT P ON V.PatientID = P.UserID
@@ -28,18 +28,15 @@ if ($isStaff) {
         ORDER BY V.AdmissionDate DESC
         LIMIT 80
     ");
-    $visits = $visitsStmt->fetchAll();
 } else {
-    $visitsStmt = $pdo->prepare("
+    $visits = db_fetch_all($conn, "
         SELECT V.VisitID, V.AdmissionDate, U.Name AS PatientName, '' AS DoctorName
         FROM VISIT V
         JOIN PATIENT P ON V.PatientID = P.UserID
         JOIN `USER` U ON P.UserID = U.UserID
         WHERE P.AssignedDoctorID = ?
         ORDER BY V.AdmissionDate DESC
-    ");
-    $visitsStmt->execute([$_SESSION['user_id']]);
-    $visits = $visitsStmt->fetchAll();
+    ", [$_SESSION['user_id']]);
 }
 
 $invoice = null;
@@ -56,29 +53,26 @@ if ($visitId) {
         LEFT JOIN `USER` DocU ON P.AssignedDoctorID = DocU.UserID
         WHERE V.VisitID = ? " . ($isDoctor ? "AND P.AssignedDoctorID = ?" : "");
     
-    $invoiceStmt = $pdo->prepare($sql);
-    if ($isDoctor) {
-        $invoiceStmt->execute([$visitId, $_SESSION['user_id']]);
-    } else {
-        $invoiceStmt->execute([$visitId]);
-    }
-    $invoice = $invoiceStmt->fetch();
+    $params = $isDoctor ? [$visitId, $_SESSION['user_id']] : [$visitId];
+    $invoice = db_fetch_one($conn, $sql, $params);
 }
 $total = $invoice ? (float) $invoice['ConsultationTotal'] + (float) $invoice['LabTotal'] + (float) $invoice['MedicationTotal'] : 0;
 $outOfPocket = $total * (1 - ((float) ($invoice['CoveragePercentage'] ?? 0) / 100));
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($visitId && $invoice) {
+        $inTx = false;
         try {
-            $pdo->beginTransaction();
-            $pdo->exec('SET @app_user_id = ' . (int) $_SESSION['user_id']);
-            $invoiceStmt = $pdo->prepare("INSERT INTO INVOICE (`Date`, OutOfPocket, VisitID) VALUES (NOW(), ?, ?) ON DUPLICATE KEY UPDATE `Date` = VALUES(`Date`), OutOfPocket = VALUES(OutOfPocket)");
-            $invoiceStmt->execute([$outOfPocket, $visitId]);
-            $pdo->commit();
+            db_begin_transaction($conn);
+            $inTx = true;
+            db_execute($conn, 'SET @app_user_id = ' . (int) $_SESSION['user_id']);
+            db_execute($conn, "INSERT INTO INVOICE (`Date`, OutOfPocket, VisitID) VALUES (NOW(), ?, ?) ON DUPLICATE KEY UPDATE `Date` = VALUES(`Date`), OutOfPocket = VALUES(OutOfPocket)", [$outOfPocket, $visitId]);
+            db_commit($conn);
+            $inTx = false;
             $generatedMessage = 'Invoice generated and saved successfully.';
         } catch (Throwable $exception) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
+            if ($inTx) {
+                db_rollback($conn);
             }
             $billingError = 'Invoice could not be saved.';
         }
@@ -87,7 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Fetch saved invoices
 if ($isStaff) {
-    $savedInvStmt = $pdo->query("
+    $savedInvoices = db_fetch_all($conn, "
         SELECT I.InvoiceID, I.Date, I.OutOfPocket, V.VisitID, U.Name AS PatientName, P.PatientCode, DocU.Name AS DoctorName
         FROM INVOICE I
         JOIN VISIT V ON I.VisitID = V.VisitID
@@ -96,9 +90,8 @@ if ($isStaff) {
         LEFT JOIN `USER` DocU ON P.AssignedDoctorID = DocU.UserID
         ORDER BY I.Date DESC
     ");
-    $savedInvoices = $savedInvStmt->fetchAll();
 } else {
-    $savedInvStmt = $pdo->prepare("
+    $savedInvoices = db_fetch_all($conn, "
         SELECT I.InvoiceID, I.Date, I.OutOfPocket, V.VisitID, U.Name AS PatientName, P.PatientCode, DocU.Name AS DoctorName
         FROM INVOICE I
         JOIN VISIT V ON I.VisitID = V.VisitID
@@ -107,9 +100,7 @@ if ($isStaff) {
         LEFT JOIN `USER` DocU ON P.AssignedDoctorID = DocU.UserID
         WHERE P.AssignedDoctorID = ?
         ORDER BY I.Date DESC
-    ");
-    $savedInvStmt->execute([$_SESSION['user_id']]);
-    $savedInvoices = $savedInvStmt->fetchAll();
+    ", [$_SESSION['user_id']]);
 }
 ?>
 <!DOCTYPE html>

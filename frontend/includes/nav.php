@@ -12,8 +12,8 @@ $isStaff = $role === 'Staff';
 $isGuardian = $role === 'Guardian';
 
 $userNotifications = [];
-if ($userId > 0 && isset($pdo)) {
-    $rawNotifs = get_user_notifications($pdo, $userId, $role);
+if ($userId > 0 && isset($conn)) {
+    $rawNotifs = get_user_notifications($conn, $userId, $role);
     $cleared = $_SESSION['cleared_notifications'][$userId] ?? [];
     if (!empty($cleared)) {
         $userNotifications = array_values(array_filter($rawNotifs, function($n) use ($cleared) {

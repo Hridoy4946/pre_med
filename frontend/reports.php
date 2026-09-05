@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['Staff', 'Doctor'], true)) {
@@ -31,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_delivery'])) {
 }
 
 // Fetch all Lab Test Reports
-$labStmt = $pdo->query("
+$labReports = db_fetch_all($conn, "
     SELECT LT.TestID, LT.Result, LT.Cost, V.VisitID, V.AdmissionDate,
            U.Name AS PatientName, P.PatientCode, P.BloodGroup, P.Gender, P.DateOfBirth,
            DocU.Name AS DoctorName, Dep.DeptName
@@ -44,10 +44,9 @@ $labStmt = $pdo->query("
     LEFT JOIN DEPARTMENT Dep ON Doc.DeptID = Dep.DeptID
     ORDER BY V.AdmissionDate DESC
 ");
-$labReports = $labStmt->fetchAll();
 
 // Fetch Diagnosis Reports
-$diagStmt = $pdo->query("
+$diagReports = db_fetch_all($conn, "
     SELECT D.DiagnosisID, D.DiagnosisText, D.CreatedAt, V.VisitID, V.AdmissionDate,
            U.Name AS PatientName, P.PatientCode, P.BloodGroup, P.Gender, P.DateOfBirth,
            DocU.Name AS DoctorName, Dep.DeptName
@@ -60,7 +59,6 @@ $diagStmt = $pdo->query("
     LEFT JOIN DEPARTMENT Dep ON Doc.DeptID = Dep.DeptID
     ORDER BY D.CreatedAt DESC
 ");
-$diagReports = $diagStmt->fetchAll();
 
 // Calculate total metrics
 $totalLab = count($labReports);

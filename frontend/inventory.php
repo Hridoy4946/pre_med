@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['Staff', 'Doctor'], true)) {
@@ -26,20 +26,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($medId && $addQty && $addQty > 0) {
             try {
-                $oldStmt = $pdo->prepare("SELECT MedicationName, StockQuantity, UnitCost, InventoryStatus FROM MEDICATION WHERE MedicationID = ?");
-                $oldStmt->execute([$medId]);
-                $oldData = $oldStmt->fetch();
+                $oldData = db_fetch_one($conn, "SELECT MedicationName, StockQuantity, UnitCost, InventoryStatus FROM MEDICATION WHERE MedicationID = ?", [$medId]);
 
                 if ($oldData) {
                     $newQty = (int)$oldData['StockQuantity'] + $addQty;
                     $newStatus = ($newQty < 50) ? 'Reorder Needed' : 'Available';
 
-                    $upStmt = $pdo->prepare("UPDATE MEDICATION SET StockQuantity = ?, InventoryStatus = ? WHERE MedicationID = ?");
-                    $upStmt->execute([$newQty, $newStatus, $medId]);
+                    db_execute($conn, "UPDATE MEDICATION SET StockQuantity = ?, InventoryStatus = ? WHERE MedicationID = ?", [$newQty, $newStatus, $medId]);
 
                     // Audit log entry
-                    $auditStmt = $pdo->prepare("INSERT INTO AUDIT_LOG (ActionType, TableName, RecordID, OldData, NewData, UserID) VALUES ('UPDATE', 'MEDICATION', ?, ?, ?, ?)");
-                    $auditStmt->execute([
+                    db_execute($conn, "INSERT INTO AUDIT_LOG (ActionType, TableName, RecordID, OldData, NewData, UserID) VALUES ('UPDATE', 'MEDICATION', ?, ?, ?, ?)", [
                         $medId,
                         json_encode($oldData),
                         json_encode(['MedicationName' => $oldData['MedicationName'], 'StockQuantity' => $newQty, 'InventoryStatus' => $newStatus]),
@@ -65,18 +61,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($medId && $name !== '' && $qty !== false && $qty >= 0 && $unitCost !== false && $unitCost >= 0) {
             try {
-                $oldStmt = $pdo->prepare("SELECT MedicationName, StockQuantity, UnitCost, InventoryStatus FROM MEDICATION WHERE MedicationID = ?");
-                $oldStmt->execute([$medId]);
-                $oldData = $oldStmt->fetch();
+                $oldData = db_fetch_one($conn, "SELECT MedicationName, StockQuantity, UnitCost, InventoryStatus FROM MEDICATION WHERE MedicationID = ?", [$medId]);
 
                 $status = ($qty < 50) ? 'Reorder Needed' : 'Available';
 
-                $upStmt = $pdo->prepare("UPDATE MEDICATION SET MedicationName = ?, StockQuantity = ?, UnitCost = ?, InventoryStatus = ? WHERE MedicationID = ?");
-                $upStmt->execute([$name, $qty, $unitCost, $status, $medId]);
+                db_execute($conn, "UPDATE MEDICATION SET MedicationName = ?, StockQuantity = ?, UnitCost = ?, InventoryStatus = ? WHERE MedicationID = ?", [$name, $qty, $unitCost, $status, $medId]);
 
                 // Audit log entry
-                $auditStmt = $pdo->prepare("INSERT INTO AUDIT_LOG (ActionType, TableName, RecordID, OldData, NewData, UserID) VALUES ('UPDATE', 'MEDICATION', ?, ?, ?, ?)");
-                $auditStmt->execute([
+                db_execute($conn, "INSERT INTO AUDIT_LOG (ActionType, TableName, RecordID, OldData, NewData, UserID) VALUES ('UPDATE', 'MEDICATION', ?, ?, ?, ?)", [
                     $medId,
                     json_encode($oldData),
                     json_encode(['MedicationName' => $name, 'StockQuantity' => $qty, 'UnitCost' => $unitCost, 'InventoryStatus' => $status]),
@@ -101,13 +93,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($name !== '' && $qty !== false && $qty >= 0 && $unitCost !== false && $unitCost >= 0) {
             try {
                 $status = ($qty < 50) ? 'Reorder Needed' : 'Available';
-                $insStmt = $pdo->prepare("INSERT INTO MEDICATION (MedicationName, StockQuantity, UnitCost, InventoryStatus) VALUES (?, ?, ?, ?)");
-                $insStmt->execute([$name, $qty, $unitCost, $status]);
-                $newId = (int)$pdo->lastInsertId();
+                db_execute($conn, "INSERT INTO MEDICATION (MedicationName, StockQuantity, UnitCost, InventoryStatus) VALUES (?, ?, ?, ?)", [$name, $qty, $unitCost, $status]);
+                $newId = db_insert_id($conn);
 
                 // Audit log entry
-                $auditStmt = $pdo->prepare("INSERT INTO AUDIT_LOG (ActionType, TableName, RecordID, OldData, NewData, UserID) VALUES ('INSERT', 'MEDICATION', ?, NULL, ?, ?)");
-                $auditStmt->execute([
+                db_execute($conn, "INSERT INTO AUDIT_LOG (ActionType, TableName, RecordID, OldData, NewData, UserID) VALUES ('INSERT', 'MEDICATION', ?, NULL, ?, ?)", [
                     $newId,
                     json_encode(['MedicationName' => $name, 'StockQuantity' => $qty, 'UnitCost' => $unitCost, 'InventoryStatus' => $status]),
                     $userId
@@ -124,7 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Fetch stats
-$statsStmt = $pdo->query("
+$stats = db_fetch_one($conn, "
     SELECT 
         COUNT(*) AS TotalItems,
         COALESCE(SUM(StockQuantity), 0) AS TotalUnits,
@@ -132,18 +122,16 @@ $statsStmt = $pdo->query("
         COUNT(CASE WHEN InventoryStatus = 'Reorder Needed' OR StockQuantity < 50 THEN 1 END) AS LowStockCount,
         COUNT(CASE WHEN InventoryStatus = 'Available' AND StockQuantity >= 50 THEN 1 END) AS HealthyStockCount
     FROM MEDICATION
-");
-$stats = $statsStmt->fetch() ?: ['TotalItems' => 0, 'TotalUnits' => 0, 'TotalValue' => 0, 'LowStockCount' => 0, 'HealthyStockCount' => 0];
+") ?: ['TotalItems' => 0, 'TotalUnits' => 0, 'TotalValue' => 0, 'LowStockCount' => 0, 'HealthyStockCount' => 0];
 
 // Fetch all medications
-$itemsStmt = $pdo->query("
+$items = db_fetch_all($conn, "
     SELECT MedicationID, MedicationName, StockQuantity, UnitCost, InventoryStatus,
            (StockQuantity * UnitCost) AS ItemTotalValue,
            (SELECT COUNT(*) FROM PRESCRIPTION_ITEM WHERE MedicationID = MEDICATION.MedicationID) AS PrescriptionUsageCount
     FROM MEDICATION
     ORDER BY (CASE WHEN StockQuantity < 50 THEN 0 ELSE 1 END), StockQuantity ASC, MedicationName ASC
 ");
-$items = $itemsStmt->fetchAll();
 ?>
 <!DOCTYPE html>
 <html lang="en">

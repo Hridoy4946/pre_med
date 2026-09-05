@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Patient') {
@@ -58,26 +58,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($score === false || $score < 1 || $score > 10) {
         $error = 'Choose a severity score from 1 to 10.';
     } else {
-        $stmt = $pdo->prepare('INSERT INTO SYMPTOM_LOG (PatientID, SymptomName, SymptomNote, SeverityScore, LoggedAt) VALUES (?, ?, ?, ?, ?)');
         foreach ($symptomNames as $symptomName) {
-            $stmt->execute([$userId, $symptomName, $symptomNote, $score, $logTimestamp->format('Y-m-d H:i:s')]);
+            db_execute($conn, 'INSERT INTO SYMPTOM_LOG (PatientID, SymptomName, SymptomNote, SeverityScore, LoggedAt) VALUES (?, ?, ?, ?, ?)', [$userId, $symptomName, $symptomNote, $score, $logTimestamp->format('Y-m-d H:i:s')]);
         }
         // Recalculate 3-day rolling average and risk
-        $avgStmt = $pdo->prepare('SELECT AVG(SeverityScore) FROM SYMPTOM_LOG WHERE PatientID = ? AND LoggedAt >= DATE_SUB(NOW(), INTERVAL 3 DAY)');
-        $avgStmt->execute([$userId]);
-        $average = (float) $avgStmt->fetchColumn();
+        $average = (float)db_fetch_column($conn, 'SELECT AVG(SeverityScore) FROM SYMPTOM_LOG WHERE PatientID = ? AND LoggedAt >= DATE_SUB(NOW(), INTERVAL 3 DAY)', [$userId]);
         $status  = $average >= 7 ? 'Requires Attention' : 'Stable';
 
-        $riskStmt = $pdo->prepare("SELECT CASE
+        $risk = db_fetch_column($conn, "SELECT CASE
             WHEN DateOfBirth IS NOT NULL AND TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) >= 60
                  AND (SELECT COUNT(*) FROM SYMPTOM_LOG WHERE PatientID = ? AND SeverityScore > 8) >= 2 THEN 'High'
             WHEN (SELECT COUNT(*) FROM SYMPTOM_LOG WHERE PatientID = ? AND SeverityScore >= 7) >= 2 THEN 'Medium'
-            ELSE 'Low' END FROM PATIENT WHERE UserID = ?");
-        $riskStmt->execute([$userId, $userId, $userId]);
-        $risk = $riskStmt->fetchColumn() ?: 'Low';
+            ELSE 'Low' END FROM PATIENT WHERE UserID = ?", [$userId, $userId, $userId]) ?: 'Low';
 
-        $pdo->prepare('UPDATE PATIENT SET ProfileStatus = ?, RiskLevel = ? WHERE UserID = ?')
-            ->execute([$status, $risk, $userId]);
+        db_execute($conn, 'UPDATE PATIENT SET ProfileStatus = ?, RiskLevel = ? WHERE UserID = ?', [$status, $risk, $userId]);
 
         if ($status === 'Requires Attention') {
             $message = '⚠ Your 3-day average severity is ' . number_format($average, 1) . '/10. Your profile has been flagged. Please contact your care team.';
@@ -87,13 +81,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$historyStmt = $pdo->prepare('SELECT COALESCE(SymptomName, \'General\') AS SymptomName, SymptomNote, SeverityScore, LoggedAt FROM SYMPTOM_LOG WHERE PatientID = ? ORDER BY LoggedAt DESC LIMIT 30');
-$historyStmt->execute([$userId]);
-$history = $historyStmt->fetchAll();
+$history = db_fetch_all($conn, 'SELECT COALESCE(SymptomName, \'General\') AS SymptomName, SymptomNote, SeverityScore, LoggedAt FROM SYMPTOM_LOG WHERE PatientID = ? ORDER BY LoggedAt DESC LIMIT 30', [$userId]);
 
-$todayStmt = $pdo->prepare('SELECT COUNT(*) FROM SYMPTOM_LOG WHERE PatientID = ? AND DATE(LoggedAt) = CURDATE()');
-$todayStmt->execute([$userId]);
-$loggedToday = (int) $todayStmt->fetchColumn() > 0;
+$loggedToday = (int)db_fetch_column($conn, 'SELECT COUNT(*) FROM SYMPTOM_LOG WHERE PatientID = ? AND DATE(LoggedAt) = CURDATE()', [$userId]) > 0;
 ?>
 <!DOCTYPE html>
 <html lang="en">

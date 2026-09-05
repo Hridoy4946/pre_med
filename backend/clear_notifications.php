@@ -41,9 +41,9 @@ if (!empty($data['ids']) && is_array($data['ids'])) {
 }
 
 // 2. If 'all' was requested, fetch current active IDs and ensure all are marked cleared
-if (!empty($data['all']) && isset($pdo)) {
+if (!empty($data['all']) && isset($conn)) {
     try {
-        $activeNotifs = get_user_notifications($pdo, $userId, $role);
+        $activeNotifs = get_user_notifications($conn, $userId, $role);
         foreach ($activeNotifs as $an) {
             $anId = $an['id'] ?? '';
             if ($anId !== '' && !in_array($anId, $clearedList, true)) {

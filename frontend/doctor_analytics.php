@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Doctor') {
@@ -6,16 +6,14 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Doctor') {
     exit();
 }
 
-$medications = $pdo->query("SELECT MedicationID, MedicationName FROM MEDICATION ORDER BY MedicationName")->fetchAll();
+$medications = db_fetch_all($conn, "SELECT MedicationID, MedicationName FROM MEDICATION ORDER BY MedicationName");
 $selectedMedication = filter_input(INPUT_GET, 'medication_id', FILTER_VALIDATE_INT);
 $treatmentReport = [];
 if ($selectedMedication) {
-    $reportStmt = $pdo->prepare("SELECT U.Name AS PatientName, M.MedicationName, (SELECT ROUND(AVG(SeverityScore), 2) FROM SYMPTOM_LOG WHERE PatientID = V.PatientID AND LoggedAt < PR.PrescribedAt) AS BeforeAverage, (SELECT ROUND(AVG(SeverityScore), 2) FROM SYMPTOM_LOG WHERE PatientID = V.PatientID AND LoggedAt >= PR.PrescribedAt) AS AfterAverage FROM PRESCRIPTION PR JOIN PRESCRIPTION_ITEM PI ON PR.PrescriptionID = PI.PrescriptionID JOIN MEDICATION M ON PI.MedicationID = M.MedicationID JOIN VISIT V ON PR.VisitID = V.VisitID JOIN PATIENT P ON V.PatientID = P.UserID JOIN `USER` U ON P.UserID = U.UserID WHERE PI.MedicationID = ? AND P.AssignedDoctorID = ? GROUP BY U.UserID, U.Name, M.MedicationName, V.PatientID, PR.PrescribedAt");
-    $reportStmt->execute([$selectedMedication, $_SESSION['user_id']]);
-    $treatmentReport = $reportStmt->fetchAll();
+    $treatmentReport = db_fetch_all($conn, "SELECT U.Name AS PatientName, M.MedicationName, (SELECT ROUND(AVG(SeverityScore), 2) FROM SYMPTOM_LOG WHERE PatientID = V.PatientID AND LoggedAt < PR.PrescribedAt) AS BeforeAverage, (SELECT ROUND(AVG(SeverityScore), 2) FROM SYMPTOM_LOG WHERE PatientID = V.PatientID AND LoggedAt >= PR.PrescribedAt) AS AfterAverage FROM PRESCRIPTION PR JOIN PRESCRIPTION_ITEM PI ON PR.PrescriptionID = PI.PrescriptionID JOIN MEDICATION M ON PI.MedicationID = M.MedicationID JOIN VISIT V ON PR.VisitID = V.VisitID JOIN PATIENT P ON V.PatientID = P.UserID JOIN `USER` U ON P.UserID = U.UserID WHERE PI.MedicationID = ? AND P.AssignedDoctorID = ? GROUP BY U.UserID, U.Name, M.MedicationName, V.PatientID, PR.PrescribedAt", [$selectedMedication, $_SESSION['user_id']]);
 }
 
-$patientsStmt = $pdo->prepare("
+$patientsReport = db_fetch_all($conn, "
     SELECT 
         P.UserID AS PatientUserID,
         U.Name AS PatientName,
@@ -40,13 +38,9 @@ $patientsStmt = $pdo->prepare("
     WHERE P.AssignedDoctorID = ?
     GROUP BY P.UserID, U.Name, P.PatientCode, P.BloodGroup, P.DateOfBirth, P.RiskLevel, P.ProfileStatus
     ORDER BY TotalLogs DESC
-");
-$patientsStmt->execute([$_SESSION['user_id']]);
-$patientsReport = $patientsStmt->fetchAll();
+", [$_SESSION['user_id']]);
 
-$followupStmt = $pdo->prepare("SELECT U.Name AS PatientName, MAX(S.SeverityScore) AS PeakSeverity, MAX(S.LoggedAt) AS LastSevereLog FROM PATIENT P JOIN `USER` U ON P.UserID = U.UserID JOIN SYMPTOM_LOG S ON S.PatientID = P.UserID WHERE P.AssignedDoctorID = ? AND S.SeverityScore > 8 AND S.LoggedAt >= DATE_SUB(NOW(), INTERVAL 7 DAY) AND NOT EXISTS (SELECT 1 FROM APPOINTMENT A WHERE A.PatientID = P.UserID AND A.AppointmentDate >= NOW()) GROUP BY P.UserID, U.Name");
-$followupStmt->execute([$_SESSION['user_id']]);
-$followups = $followupStmt->fetchAll();
+$followups = db_fetch_all($conn, "SELECT U.Name AS PatientName, MAX(S.SeverityScore) AS PeakSeverity, MAX(S.LoggedAt) AS LastSevereLog FROM PATIENT P JOIN `USER` U ON P.UserID = U.UserID JOIN SYMPTOM_LOG S ON S.PatientID = P.UserID WHERE P.AssignedDoctorID = ? AND S.SeverityScore > 8 AND S.LoggedAt >= DATE_SUB(NOW(), INTERVAL 7 DAY) AND NOT EXISTS (SELECT 1 FROM APPOINTMENT A WHERE A.PatientID = P.UserID AND A.AppointmentDate >= NOW()) GROUP BY P.UserID, U.Name", [$_SESSION['user_id']]);
 ?>
 <!DOCTYPE html>
 <html lang="en">

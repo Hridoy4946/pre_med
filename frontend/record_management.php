@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Doctor') {
@@ -13,49 +13,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $recordId = filter_input(INPUT_POST, 'record_id', FILTER_VALIDATE_INT);
     $value = trim($_POST['value'] ?? '');
+    $inTx = false;
     try {
         if (!$recordId) {
             throw new RuntimeException('Select a valid record.');
         }
-        $pdo->beginTransaction();
-        $pdo->exec('SET @app_user_id = ' . (int) $_SESSION['user_id']);
+        db_begin_transaction($conn);
+        $inTx = true;
+        db_execute($conn, 'SET @app_user_id = ' . (int) $_SESSION['user_id']);
         if ($action === 'update_diagnosis' && $value !== '') {
-            $stmt = $pdo->prepare("UPDATE DIAGNOSIS D JOIN VISIT V ON D.VisitID = V.VisitID JOIN PATIENT P ON V.PatientID = P.UserID SET D.DiagnosisText = ? WHERE D.DiagnosisID = ? AND P.AssignedDoctorID = ?");
-            $stmt->execute([$value, $recordId, $_SESSION['user_id']]);
+            db_execute($conn, "UPDATE DIAGNOSIS D JOIN VISIT V ON D.VisitID = V.VisitID JOIN PATIENT P ON V.PatientID = P.UserID SET D.DiagnosisText = ? WHERE D.DiagnosisID = ? AND P.AssignedDoctorID = ?", [$value, $recordId, $_SESSION['user_id']]);
         } elseif ($action === 'delete_diagnosis') {
-            $stmt = $pdo->prepare("DELETE D FROM DIAGNOSIS D JOIN VISIT V ON D.VisitID = V.VisitID JOIN PATIENT P ON V.PatientID = P.UserID WHERE D.DiagnosisID = ? AND P.AssignedDoctorID = ?");
-            $stmt->execute([$recordId, $_SESSION['user_id']]);
+            db_execute($conn, "DELETE D FROM DIAGNOSIS D JOIN VISIT V ON D.VisitID = V.VisitID JOIN PATIENT P ON V.PatientID = P.UserID WHERE D.DiagnosisID = ? AND P.AssignedDoctorID = ?", [$recordId, $_SESSION['user_id']]);
         } elseif ($action === 'update_prescription' && $value !== '') {
-            $stmt = $pdo->prepare("UPDATE PRESCRIPTION PR JOIN VISIT V ON PR.VisitID = V.VisitID JOIN PATIENT P ON V.PatientID = P.UserID SET PR.PrescribedAt = ? WHERE PR.PrescriptionID = ? AND P.AssignedDoctorID = ?");
-            $stmt->execute([$value, $recordId, $_SESSION['user_id']]);
+            db_execute($conn, "UPDATE PRESCRIPTION PR JOIN VISIT V ON PR.VisitID = V.VisitID JOIN PATIENT P ON V.PatientID = P.UserID SET PR.PrescribedAt = ? WHERE PR.PrescriptionID = ? AND P.AssignedDoctorID = ?", [$value, $recordId, $_SESSION['user_id']]);
         } elseif ($action === 'delete_prescription') {
-            $stmt = $pdo->prepare("DELETE PR FROM PRESCRIPTION PR JOIN VISIT V ON PR.VisitID = V.VisitID JOIN PATIENT P ON V.PatientID = P.UserID WHERE PR.PrescriptionID = ? AND P.AssignedDoctorID = ?");
-            $stmt->execute([$recordId, $_SESSION['user_id']]);
+            db_execute($conn, "DELETE PR FROM PRESCRIPTION PR JOIN VISIT V ON PR.VisitID = V.VisitID JOIN PATIENT P ON V.PatientID = P.UserID WHERE PR.PrescriptionID = ? AND P.AssignedDoctorID = ?", [$recordId, $_SESSION['user_id']]);
         } else {
             throw new RuntimeException('Provide a replacement value for updates.');
         }
-        if ($stmt->rowCount() < 1) {
+        if (db_affected_rows($conn) < 1) {
             throw new RuntimeException('Record not found or outside your patient scope.');
         }
-        $pdo->commit();
+        db_commit($conn);
+        $inTx = false;
         $message = 'Record updated and audit log entry created successfully.';
     } catch (Throwable $exception) {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
+        if ($inTx) {
+            db_rollback($conn);
         }
         $error = $exception->getMessage();
     }
 }
 
-$diagnosisStmt = $pdo->prepare("SELECT D.DiagnosisID, D.DiagnosisText, U.Name AS PatientName FROM DIAGNOSIS D JOIN VISIT V ON D.VisitID = V.VisitID JOIN PATIENT P ON V.PatientID = P.UserID JOIN `USER` U ON V.PatientID = U.UserID WHERE P.AssignedDoctorID = ? ORDER BY D.DiagnosisID DESC");
-$diagnosisStmt->execute([$_SESSION['user_id']]);
-$diagnoses = $diagnosisStmt->fetchAll();
-
-$prescriptionStmt = $pdo->prepare("SELECT PR.PrescriptionID, PR.PrescribedAt, U.Name AS PatientName FROM PRESCRIPTION PR JOIN VISIT V ON PR.VisitID = V.VisitID JOIN PATIENT P ON V.PatientID = P.UserID JOIN `USER` U ON V.PatientID = U.UserID WHERE P.AssignedDoctorID = ? ORDER BY PR.PrescriptionID DESC");
-$prescriptionStmt->execute([$_SESSION['user_id']]);
-$prescriptions = $prescriptionStmt->fetchAll();
-
-$auditStmt = $pdo->prepare("
+$diagnoses = db_fetch_all($conn, "SELECT D.DiagnosisID, D.DiagnosisText, U.Name AS PatientName FROM DIAGNOSIS D JOIN VISIT V ON D.VisitID = V.VisitID JOIN PATIENT P ON V.PatientID = P.UserID JOIN `USER` U ON V.PatientID = U.UserID WHERE P.AssignedDoctorID = ? ORDER BY D.DiagnosisID DESC", [$_SESSION['user_id']]);
+$prescriptions = db_fetch_all($conn, "SELECT PR.PrescriptionID, PR.PrescribedAt, U.Name AS PatientName FROM PRESCRIPTION PR JOIN VISIT V ON PR.VisitID = V.VisitID JOIN PATIENT P ON V.PatientID = P.UserID JOIN `USER` U ON V.PatientID = U.UserID WHERE P.AssignedDoctorID = ? ORDER BY PR.PrescriptionID DESC", [$_SESSION['user_id']]);
+$auditEntries = db_fetch_all($conn, "
     SELECT AL.AuditID, AL.ActionType, AL.TableName, AL.RecordID,
            AL.OldData, AL.NewData, AL.Timestamp,
            U.Name AS ActorName
@@ -63,8 +56,6 @@ $auditStmt = $pdo->prepare("
     LEFT JOIN `USER` U ON U.UserID = AL.UserID
     ORDER BY AL.Timestamp DESC LIMIT 20
 ");
-$auditStmt->execute();
-$auditEntries = $auditStmt->fetchAll();
 
 function formatAuditPayload(?string $rawJson): string {
     if ($rawJson === null || trim($rawJson) === '') {

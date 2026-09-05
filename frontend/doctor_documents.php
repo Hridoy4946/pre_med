@@ -14,28 +14,24 @@ if (!$patientId) {
 }
 
 // Verify this doctor is the assigned doctor for this patient
-$checkStmt = $pdo->prepare("
+$patient = db_fetch_one($conn, "
     SELECT U.Name AS PatientName, P.PatientCode
     FROM PATIENT P
     JOIN `USER` U ON U.UserID = P.UserID
     WHERE P.UserID = ? AND P.AssignedDoctorID = ?
-");
-$checkStmt->execute([$patientId, $doctorId]);
-$patient = $checkStmt->fetch();
+", [$patientId, $doctorId]);
 
 if (!$patient) {
     http_response_code(403);
     exit('You are not the assigned doctor for this patient.');
 }
 
-$docsStmt = $pdo->prepare("
+$documents = db_fetch_all($conn, "
     SELECT DocumentID, FileName, MimeType, UploadedAt
     FROM PATIENT_DOCUMENT
     WHERE PatientID = ?
     ORDER BY UploadedAt DESC
-");
-$docsStmt->execute([$patientId]);
-$documents = $docsStmt->fetchAll();
+", [$patientId]);
 
 $typeIcons = [
     'application/pdf'                                                          => '📄',

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Doctor') {
@@ -8,10 +8,8 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Doctor') {
 
 $message = '';
 $error = '';
-$patientsStmt = $pdo->prepare("SELECT P.UserID, U.Name FROM PATIENT P JOIN `USER` U ON P.UserID = U.UserID WHERE P.AssignedDoctorID = ? ORDER BY U.Name");
-$patientsStmt->execute([$_SESSION['user_id']]);
-$patients = $patientsStmt->fetchAll();
-$medications = $pdo->query("SELECT MedicationID, MedicationName, StockQuantity FROM MEDICATION ORDER BY MedicationName")->fetchAll();
+$patients = db_fetch_all($conn, "SELECT P.UserID, U.Name FROM PATIENT P JOIN `USER` U ON P.UserID = U.UserID WHERE P.AssignedDoctorID = ? ORDER BY U.Name", [$_SESSION['user_id']]);
+$medications = db_fetch_all($conn, "SELECT MedicationID, MedicationName, StockQuantity FROM MEDICATION ORDER BY MedicationName");
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_csrf();
@@ -30,44 +28,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($consultationCost === false || $consultationCost < 0 || $labCost === false || $labCost < 0) {
         $error = 'Costs must be zero or a positive number.';
     } else {
+        $inTx = false;
         try {
-            $pdo->beginTransaction();
-            $scopeStmt = $pdo->prepare("SELECT 1 FROM PATIENT WHERE UserID = ? AND AssignedDoctorID = ? LIMIT 1");
-            $scopeStmt->execute([$patientId, $_SESSION['user_id']]);
-            if (!$scopeStmt->fetch()) {
+            db_begin_transaction($conn);
+            $inTx = true;
+            if (!db_fetch_column($conn, "SELECT 1 FROM PATIENT WHERE UserID = ? AND AssignedDoctorID = ? LIMIT 1", [$patientId, $_SESSION['user_id']])) {
                 throw new RuntimeException('This patient is not assigned to your care.');
             }
-            $pdo->exec('SET @app_user_id = ' . (int) $_SESSION['user_id']);
+            db_execute($conn, 'SET @app_user_id = ' . (int) $_SESSION['user_id']);
 
-            $visitStmt = $pdo->prepare('INSERT INTO VISIT (PatientID) VALUES (?)');
-            $visitStmt->execute([$patientId]);
-            $visitId = (int) $pdo->lastInsertId();
+            db_execute($conn, 'INSERT INTO VISIT (PatientID) VALUES (?)', [$patientId]);
+            $visitId = db_insert_id($conn);
 
             if ($diagnosisText !== '') {
-                $stmt = $pdo->prepare('INSERT INTO DIAGNOSIS (VisitID, DiagnosisText) VALUES (?, ?)');
-                $stmt->execute([$visitId, $diagnosisText]);
+                db_execute($conn, 'INSERT INTO DIAGNOSIS (VisitID, DiagnosisText) VALUES (?, ?)', [$visitId, $diagnosisText]);
             }
             if ($notes !== '' || $consultationCost > 0) {
-                $stmt = $pdo->prepare('INSERT INTO CONSULTATION (Notes, VisitID, DoctorID, Cost) VALUES (?, ?, ?, ?)');
-                $stmt->execute([$notes, $visitId, $_SESSION['user_id'], $consultationCost]);
+                db_execute($conn, 'INSERT INTO CONSULTATION (Notes, VisitID, DoctorID, Cost) VALUES (?, ?, ?, ?)', [$notes, $visitId, $_SESSION['user_id'], $consultationCost]);
             }
             if ($labResult !== '' || $labCost > 0) {
-                $stmt = $pdo->prepare('INSERT INTO LAB_TEST (Result, VisitID, Cost) VALUES (?, ?, ?)');
-                $stmt->execute([$labResult, $visitId, $labCost]);
+                db_execute($conn, 'INSERT INTO LAB_TEST (Result, VisitID, Cost) VALUES (?, ?, ?)', [$labResult, $visitId, $labCost]);
             }
             if ($medicationId) {
-                $stmt = $pdo->prepare('INSERT INTO PRESCRIPTION (VisitID) VALUES (?)');
-                $stmt->execute([$visitId]);
-                $prescriptionId = $pdo->lastInsertId();
-                $stmt = $pdo->prepare('INSERT INTO PRESCRIPTION_ITEM (PrescriptionID, MedicationID, Dosage, Quantity) VALUES (?, ?, ?, ?)');
-                $stmt->execute([$prescriptionId, $medicationId, $dosage, $quantity]);
+                db_execute($conn, 'INSERT INTO PRESCRIPTION (VisitID) VALUES (?)', [$visitId]);
+                $prescriptionId = db_insert_id($conn);
+                db_execute($conn, 'INSERT INTO PRESCRIPTION_ITEM (PrescriptionID, MedicationID, Dosage, Quantity) VALUES (?, ?, ?, ?)', [$prescriptionId, $medicationId, $dosage, $quantity]);
             }
 
-            $pdo->commit();
+            db_commit($conn);
+            $inTx = false;
             $message = 'Clinical records saved successfully.';
         } catch (Throwable $exception) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
+            if ($inTx) {
+                db_rollback($conn);
             }
             $error = $exception->getMessage();
         }

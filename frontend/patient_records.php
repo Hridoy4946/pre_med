@@ -17,13 +17,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_doc_id'])) {
     require_csrf();
     $delId = filter_input(INPUT_POST, 'delete_doc_id', FILTER_VALIDATE_INT);
     if ($delId) {
-        $dStmt = $pdo->prepare("SELECT StoredName FROM PATIENT_DOCUMENT WHERE DocumentID = ? AND PatientID = ?");
-        $dStmt->execute([$delId, $userId ?? 0]);
-        $dDoc = $dStmt->fetch();
+        $dDoc = db_fetch_one($conn, "SELECT StoredName FROM PATIENT_DOCUMENT WHERE DocumentID = ? AND PatientID = ?", [$delId, $userId ?? 0]);
         if ($dDoc) {
             $fp = dirname(__DIR__) . '/resources/uploads/' . basename($dDoc['StoredName']);
             if (file_exists($fp) && is_file($fp)) @unlink($fp);
-            $pdo->prepare("DELETE FROM PATIENT_DOCUMENT WHERE DocumentID = ? AND PatientID = ?")->execute([$delId, $userId ?? 0]);
+            db_execute($conn, "DELETE FROM PATIENT_DOCUMENT WHERE DocumentID = ? AND PatientID = ?", [$delId, $userId ?? 0]);
             $deleteMsg = 'Document deleted successfully.';
         } else {
             $deleteError = 'Document not found or access denied.';
@@ -59,8 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['medical_doc'])) {
             $storedName = bin2hex(random_bytes(16)) . '.' . $ext;
             $destPath   = dirname(__DIR__) . '/resources/uploads/' . $storedName;
             if (move_uploaded_file($file['tmp_name'], $destPath)) {
-                $ins = $pdo->prepare("INSERT INTO PATIENT_DOCUMENT (PatientID, FileName, StoredName, MimeType) VALUES (?, ?, ?, ?)");
-                $ins->execute([$userId, $origName, $storedName, $mimeType]);
+                db_execute($conn, "INSERT INTO PATIENT_DOCUMENT (PatientID, FileName, StoredName, MimeType) VALUES (?, ?, ?, ?)", [$userId, $origName, $storedName, $mimeType]);
                 $uploadMsg = '✓ "' . htmlspecialchars($origName) . '" uploaded successfully.';
             } else {
                 $uploadError = 'Could not save the file. Please contact support.';
@@ -70,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['medical_doc'])) {
 }
 
 // Fetch patient info including assigned doctor and PatientCode
-$patInfoStmt = $pdo->prepare("
+$patInfo = db_fetch_one($conn, "
     SELECT P.PatientCode,
            DU.Name AS DoctorName, Dep.DeptName
     FROM PATIENT P
@@ -78,11 +75,9 @@ $patInfoStmt = $pdo->prepare("
     LEFT JOIN `USER` DU ON DU.UserID = D.UserID
     LEFT JOIN DEPARTMENT Dep ON Dep.DeptID = D.DeptID
     WHERE P.UserID = ?
-");
-$patInfoStmt->execute([$userId]);
-$patInfo = $patInfoStmt->fetch();
+", [$userId]);
 
-$appointmentsStmt = $pdo->prepare("
+$appointments = db_fetch_all($conn, "
     SELECT A.AppointmentDate, A.DurationMinutes, A.Status,
            U.Name AS DoctorName,
            Dep.DeptName, R.RoomNumber
@@ -93,18 +88,14 @@ $appointmentsStmt = $pdo->prepare("
     JOIN CLINIC_ROOM R ON A.RoomID = R.RoomID
     WHERE A.PatientID = ?
     ORDER BY A.AppointmentDate DESC
-");
-$appointmentsStmt->execute([$userId]);
-$appointments = $appointmentsStmt->fetchAll();
+", [$userId]);
 
-$symptomsStmt = $pdo->prepare("
+$symptoms = db_fetch_all($conn, "
     SELECT SymptomName, SymptomNote, SeverityScore, LoggedAt
     FROM SYMPTOM_LOG WHERE PatientID = ? ORDER BY LoggedAt DESC LIMIT 30
-");
-$symptomsStmt->execute([$userId]);
-$symptoms = $symptomsStmt->fetchAll();
+", [$userId]);
 
-$recordsStmt = $pdo->prepare("
+$records = db_fetch_all($conn, "
     SELECT V.VisitID, V.AdmissionDate,
            GROUP_CONCAT(DISTINCT D.DiagnosisText SEPARATOR ' | ') AS Diagnoses,
            C.Notes, C.Cost AS ConsultationCost,
@@ -118,11 +109,9 @@ $recordsStmt = $pdo->prepare("
     WHERE V.PatientID = ?
     GROUP BY V.VisitID, V.AdmissionDate, C.Notes, C.Cost, L.Result, L.Cost, I.OutOfPocket
     ORDER BY V.AdmissionDate DESC
-");
-$recordsStmt->execute([$userId]);
-$records = $recordsStmt->fetchAll();
+", [$userId]);
 
-$prescriptionsStmt = $pdo->prepare("
+$prescriptions = db_fetch_all($conn, "
     SELECT PR.PrescribedAt, M.MedicationName, PI.Dosage, PI.Quantity
     FROM PRESCRIPTION PR
     JOIN PRESCRIPTION_ITEM PI ON PI.PrescriptionID = PR.PrescriptionID
@@ -130,9 +119,7 @@ $prescriptionsStmt = $pdo->prepare("
     JOIN VISIT V ON PR.VisitID = V.VisitID
     WHERE V.PatientID = ?
     ORDER BY PR.PrescribedAt DESC
-");
-$prescriptionsStmt->execute([$userId]);
-$prescriptions = $prescriptionsStmt->fetchAll();
+", [$userId]);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -535,9 +522,7 @@ button.doc-preview-close-btn:hover {
     </form>
 
     <?php
-    $docsStmt = $pdo->prepare("SELECT DocumentID, FileName, MimeType, UploadedAt FROM PATIENT_DOCUMENT WHERE PatientID = ? ORDER BY UploadedAt DESC");
-    $docsStmt->execute([$userId]);
-    $myDocs = $docsStmt->fetchAll();
+    $myDocs = db_fetch_all($conn, "SELECT DocumentID, FileName, MimeType, UploadedAt FROM PATIENT_DOCUMENT WHERE PatientID = ? ORDER BY UploadedAt DESC", [$userId]);
     $typeIcons = [
         'application/pdf'  => '📄',
         'image/jpeg'       => '🖼',

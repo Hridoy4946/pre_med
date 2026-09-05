@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Staff') {
@@ -6,17 +6,13 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Staff') {
     exit();
 }
 
-$summaryStmt = $pdo->query("SELECT (SELECT COUNT(*) FROM APPOINTMENT WHERE AppointmentDate >= NOW() AND AppointmentDate < DATE_ADD(NOW(), INTERVAL 7 DAY)) AS UpcomingAppointments, (SELECT COUNT(*) FROM APPOINTMENT WHERE DATE(AppointmentDate) = CURDATE()) AS TodayAppointments, (SELECT COUNT(*) FROM MEDICATION WHERE InventoryStatus = 'Reorder Needed') AS ReorderCount, (SELECT COUNT(*) FROM VISIT V LEFT JOIN INVOICE I ON I.VisitID = V.VisitID WHERE I.InvoiceID IS NULL) AS UnbilledVisits");
-$summary = $summaryStmt->fetch() ?: ['UpcomingAppointments' => 0, 'TodayAppointments' => 0, 'ReorderCount' => 0, 'UnbilledVisits' => 0];
+$summary = db_fetch_one($conn, "SELECT (SELECT COUNT(*) FROM APPOINTMENT WHERE AppointmentDate >= NOW() AND AppointmentDate < DATE_ADD(NOW(), INTERVAL 7 DAY)) AS UpcomingAppointments, (SELECT COUNT(*) FROM APPOINTMENT WHERE DATE(AppointmentDate) = CURDATE()) AS TodayAppointments, (SELECT COUNT(*) FROM MEDICATION WHERE InventoryStatus = 'Reorder Needed') AS ReorderCount, (SELECT COUNT(*) FROM VISIT V LEFT JOIN INVOICE I ON I.VisitID = V.VisitID WHERE I.InvoiceID IS NULL) AS UnbilledVisits") ?: ['UpcomingAppointments' => 0, 'TodayAppointments' => 0, 'ReorderCount' => 0, 'UnbilledVisits' => 0];
 
-$upcomingStmt = $pdo->query("SELECT A.AppointmentDate, A.DurationMinutes, UPatient.Name AS PatientName, UDoctor.Name AS DoctorName, R.RoomNumber FROM APPOINTMENT A JOIN `USER` UPatient ON UPatient.UserID = A.PatientID JOIN `USER` UDoctor ON UDoctor.UserID = A.DoctorID JOIN CLINIC_ROOM R ON R.RoomID = A.RoomID WHERE A.AppointmentDate >= NOW() ORDER BY A.AppointmentDate ASC LIMIT 12");
-$upcomingAppointments = $upcomingStmt->fetchAll();
+$upcomingAppointments = db_fetch_all($conn, "SELECT A.AppointmentDate, A.DurationMinutes, UPatient.Name AS PatientName, UDoctor.Name AS DoctorName, R.RoomNumber FROM APPOINTMENT A JOIN `USER` UPatient ON UPatient.UserID = A.PatientID JOIN `USER` UDoctor ON UDoctor.UserID = A.DoctorID JOIN CLINIC_ROOM R ON R.RoomID = A.RoomID WHERE A.AppointmentDate >= NOW() ORDER BY A.AppointmentDate ASC LIMIT 12");
 
-$roomUsageStmt = $pdo->query("SELECT R.RoomNumber, COUNT(A.AppointmentID) AS SlotCount FROM CLINIC_ROOM R LEFT JOIN APPOINTMENT A ON A.RoomID = R.RoomID AND A.AppointmentDate >= CURDATE() AND A.AppointmentDate < DATE_ADD(CURDATE(), INTERVAL 1 DAY) GROUP BY R.RoomID, R.RoomNumber ORDER BY SlotCount DESC, R.RoomNumber");
-$roomUsage = $roomUsageStmt->fetchAll();
+$roomUsage = db_fetch_all($conn, "SELECT R.RoomNumber, COUNT(A.AppointmentID) AS SlotCount FROM CLINIC_ROOM R LEFT JOIN APPOINTMENT A ON A.RoomID = R.RoomID AND A.AppointmentDate >= CURDATE() AND A.AppointmentDate < DATE_ADD(CURDATE(), INTERVAL 1 DAY) GROUP BY R.RoomID, R.RoomNumber ORDER BY SlotCount DESC, R.RoomNumber");
 
-$inventoryStmt = $pdo->query("SELECT MedicationName, StockQuantity, InventoryStatus FROM MEDICATION ORDER BY StockQuantity ASC, MedicationName ASC LIMIT 10");
-$inventoryRows = $inventoryStmt->fetchAll();
+$inventoryRows = db_fetch_all($conn, "SELECT MedicationName, StockQuantity, InventoryStatus FROM MEDICATION ORDER BY StockQuantity ASC, MedicationName ASC LIMIT 10");
 ?>
 <!DOCTYPE html>
 <html lang="en">

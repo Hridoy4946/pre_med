@@ -17,10 +17,8 @@ if (!$docId) {
     exit();
 }
 
-// Verify ownership
-$stmt = $pdo->prepare("SELECT StoredName FROM PATIENT_DOCUMENT WHERE DocumentID = ? AND PatientID = ?");
-$stmt->execute([$docId, $userId]);
-$doc = $stmt->fetch();
+// Verify ownership using procedural MySQLi
+$doc = db_fetch_one($conn, "SELECT StoredName FROM PATIENT_DOCUMENT WHERE DocumentID = ? AND PatientID = ?", [$docId, $userId]);
 
 if (!$doc) {
     header('Location: ../frontend/patient_records.php?del_error=1');
@@ -34,8 +32,7 @@ if (file_exists($filePath) && is_file($filePath)) {
 }
 
 // Delete DB record
-$del = $pdo->prepare("DELETE FROM PATIENT_DOCUMENT WHERE DocumentID = ? AND PatientID = ?");
-$del->execute([$docId, $userId]);
+db_execute($conn, "DELETE FROM PATIENT_DOCUMENT WHERE DocumentID = ? AND PatientID = ?", [$docId, $userId]);
 
 header('Location: ../frontend/patient_records.php?del_ok=1');
 exit();

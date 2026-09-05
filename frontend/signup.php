@@ -2,7 +2,7 @@
 require_once dirname(__DIR__) . '/backend/db.php';
 session_start();
 
-$departments = $pdo->query('SELECT DeptID, DeptName FROM DEPARTMENT ORDER BY DeptName')->fetchAll();
+$departments = db_fetch_all($conn, 'SELECT DeptID, DeptName FROM DEPARTMENT ORDER BY DeptName');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name          = trim($_POST['name'] ?? '');
@@ -23,6 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $allowedBloodGroups = ['A+','A-','B+','B-','O+','O-','AB+','AB-','Unknown'];
     $allowedGenders     = ['Male','Female','Other','Prefer not to say'];
 
+    $inTx = false;
     try {
         require_csrf();
         if (!in_array($role, $allowedRoles, true)) {
@@ -33,11 +34,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $password = password_hash($passwordInput, PASSWORD_DEFAULT);
-        $pdo->beginTransaction();
+        db_begin_transaction($conn);
+        $inTx = true;
 
-        $stmt = $pdo->prepare("INSERT INTO `USER` (Name, Email, Password, Address) VALUES (?, ?, ?, ?)");
-        $stmt->execute([$name, $email, $password, $address]);
-        $userId = (int) $pdo->lastInsertId();
+        db_execute($conn, "INSERT INTO `USER` (Name, Email, Password, Address) VALUES (?, ?, ?, ?)", [$name, $email, $password, $address]);
+        $userId = db_insert_id($conn);
 
         if ($role === 'Patient') {
             if (!in_array($bloodGroup, $allowedBloodGroups, true)) {
@@ -54,25 +55,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $dobValue = $dob;
             }
-            $stmt = $pdo->prepare("INSERT INTO PATIENT (UserID, BloodGroup, Gender, DateOfBirth) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$userId, $bloodGroup, $gender, $dobValue]);
+            db_execute($conn, "INSERT INTO PATIENT (UserID, BloodGroup, Gender, DateOfBirth) VALUES (?, ?, ?, ?)", [$userId, $bloodGroup, $gender, $dobValue]);
             // Auto-generate readable Patient Code
             $code = 'PRE-' . str_pad($userId, 5, '0', STR_PAD_LEFT);
-            $pdo->prepare("UPDATE PATIENT SET PatientCode = ? WHERE UserID = ?")->execute([$code, $userId]);
+            db_execute($conn, "UPDATE PATIENT SET PatientCode = ? WHERE UserID = ?", [$code, $userId]);
 
         } elseif ($role === 'Doctor') {
             if (!$deptId) {
                 throw new RuntimeException('Please select a medical department for the doctor account.');
             }
-            $stmt = $pdo->prepare("INSERT INTO DOCTOR (UserID, DeptID) VALUES (?, ?)");
-            $stmt->execute([$userId, $deptId]);
+            db_execute($conn, "INSERT INTO DOCTOR (UserID, DeptID) VALUES (?, ?)", [$userId, $deptId]);
 
         } elseif ($role === 'Staff') {
             if (!$deptId) {
                 throw new RuntimeException('Please select a department for the staff account.');
             }
-            $stmt = $pdo->prepare("INSERT INTO STAFF (UserID, DeptID, Title) VALUES (?, ?, ?)");
-            $stmt->execute([$userId, $deptId, $title ?: 'Operations Staff']);
+            db_execute($conn, "INSERT INTO STAFF (UserID, DeptID, Title) VALUES (?, ?, ?)", [$userId, $deptId, $title ?: 'Operations Staff']);
 
         } elseif ($role === 'Guardian') {
             $patientCode = strtoupper(trim($_POST['patient_code'] ?? ''));
@@ -80,9 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Please enter a valid Patient Code in the format PRE-00004.');
             }
             // Look up patient by readable code
-            $patCheck = $pdo->prepare("SELECT UserID FROM PATIENT WHERE PatientCode = ?");
-            $patCheck->execute([$patientCode]);
-            $patientRow = $patCheck->fetch();
+            $patientRow = db_fetch_one($conn, "SELECT UserID FROM PATIENT WHERE PatientCode = ?", [$patientCode]);
             if (!$patientRow) {
                 throw new RuntimeException('No patient found with code ' . htmlspecialchars($patientCode) . '. Please ask the patient to share their Patient Code from their dashboard.');
             }
@@ -91,21 +87,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Please provide a guardian contact phone number.');
             }
             // Check if patient already has a guardian
-            $chk = $pdo->prepare("SELECT 1 FROM GUARDIAN WHERE PatientID = ?");
-            $chk->execute([$patientId]);
-            if ($chk->fetch()) {
+            if (db_fetch_column($conn, "SELECT 1 FROM GUARDIAN WHERE PatientID = ?", [$patientId])) {
                 throw new RuntimeException('Patient ' . htmlspecialchars($patientCode) . ' already has a registered guardian profile.');
             }
-            $stmt = $pdo->prepare("INSERT INTO GUARDIAN (PatientID, GuardianUserID, GuardianName, Phone) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$patientId, $userId, $name, $phone]);
+            db_execute($conn, "INSERT INTO GUARDIAN (PatientID, GuardianUserID, GuardianName, Phone) VALUES (?, ?, ?, ?)", [$patientId, $userId, $name, $phone]);
         }
 
-        $pdo->commit();
+        db_commit($conn);
+        $inTx = false;
         header("Location: login.php?registered=1");
         exit();
     } catch (Exception $e) {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
+        if ($inTx) {
+            db_rollback($conn);
         }
         $error = $e instanceof RuntimeException ? $e->getMessage() : "Registration failed. The email address may already be in use.";
     }

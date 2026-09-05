@@ -13,10 +13,8 @@ if (!$docId) {
     exit('Invalid document ID.');
 }
 
-// Fetch document record
-$stmt = $pdo->prepare("SELECT * FROM PATIENT_DOCUMENT WHERE DocumentID = ?");
-$stmt->execute([$docId]);
-$doc = $stmt->fetch();
+// Fetch document record using procedural MySQLi
+$doc = db_fetch_one($conn, "SELECT * FROM PATIENT_DOCUMENT WHERE DocumentID = ?", [$docId]);
 
 if (!$doc) {
     http_response_code(404);
@@ -37,13 +35,11 @@ $allowed = false;
 if ($role === 'Patient' && $userId === $patientId) {
     $allowed = true;
 } elseif ($role === 'Doctor') {
-    $check = $pdo->prepare("SELECT 1 FROM PATIENT WHERE UserID = ? AND AssignedDoctorID = ?");
-    $check->execute([$patientId, $userId]);
-    $allowed = (bool) $check->fetch();
+    $check = db_fetch_one($conn, "SELECT 1 FROM PATIENT WHERE UserID = ? AND AssignedDoctorID = ?", [$patientId, $userId]);
+    $allowed = (bool) $check;
 } elseif ($role === 'Guardian') {
-    $check = $pdo->prepare("SELECT 1 FROM GUARDIAN WHERE PatientID = ? AND GuardianUserID = ?");
-    $check->execute([$patientId, $userId]);
-    $allowed = (bool) $check->fetch();
+    $check = db_fetch_one($conn, "SELECT 1 FROM GUARDIAN WHERE PatientID = ? AND GuardianUserID = ?", [$patientId, $userId]);
+    $allowed = (bool) $check;
 }
 
 if (!$allowed) {
